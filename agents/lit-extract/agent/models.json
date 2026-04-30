@@ -1,8 +1,8 @@
 {
   "providers": {
     "bailian": {
-      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "apiKey": "YOUR_DASHSCOPE_API_KEY",
+      "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
+      "apiKey": "${BAILIAN_CODING_PLAN_API_KEY}",
       "api": "openai-completions",
       "models": [
         {
@@ -19,6 +19,21 @@
           "reasoning": true,
           "input": ["text"],
           "contextWindow": 131072,
+          "maxTokens": 16384
+        }
+      ]
+    },
+    "mimo": {
+      "baseUrl": "https://token-plan-ams.xiaomimimo.com/v1",
+      "apiKey": "${MIMO_API_KEY}",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "mimo-v2.5-pro",
+          "name": "mimo-v2.5-pro",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 1000000,
           "maxTokens": 16384
         }
       ]

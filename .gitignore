@@ -12,6 +12,13 @@ sessions/
 exec-approvals.json
 update-check.json
 *.bak
+*.bak.*
+*.last-good
+workspace/.openclaw/
+workspace/pdf_*/
+*_visual_cache.json
+outputs/
+Literature/
 
 # Node / npm
 node_modules/

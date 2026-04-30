@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft-2020-12/schema",
+  "$id": "https://jjj.local/schema/jjj-v2.schema.json",
+  "title": "JJJ Literature Extraction Schema v2",
+  "description": "近海油气田多介质污染物文献知识提取 — 信封格式 + 自由知识条目",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "paper_id",
+    "bibliographic_metadata",
+    "routing",
+    "decision_summary",
+    "knowledge_items",
+    "vector_index_records",
+    "quality_control",
+    "processing_notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "jjj-v2"
+    },
+    "paper_id": {
+      "type": "string",
+      "description": "稳定短 ID，优先 第一作者_年份_关键词"
+    },
+    "bibliographic_metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["title", "authors", "year", "abstract"],
+      "properties": {
+        "title": { "type": ["string", "null"] },
+        "authors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "year": { "type": ["integer", "string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "doi": { "type": ["string", "null"] },
+        "language": { "type": ["string", "null"] },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "abstract": { "type": ["string", "null"] },
+        "file_name": { "type": ["string", "null"] }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "relevance_level",
+        "relevance_reason",
+        "document_type",
+        "domain_directions",
+        "text_quality"
+      ],
+      "properties": {
+        "relevance_level": {
+          "enum": [
+            "R1_core_direct",
+            "R2_domain_direct",
+            "R3_transferable_indirect",
+            "R4_minimal_keep"
+          ]
+        },
+        "relevance_reason": { "type": "string" },
+        "document_type": {
+          "enum": [
+            "T1_article",
+            "T2_patent",
+            "T3_manual_standard_guideline",
+            "T4_thesis_book_chapter"
+          ]
+        },
+        "domain_directions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "D1_pollutant_source",
+              "D2_produced_water_fate",
+              "D3_toxicity_risk",
+              "D4_monitoring_detection",
+              "D5_treatment_technology",
+              "D6_operation_performance",
+              "D7_cost_constraint",
+              "D8_regulation_management",
+              "D9_optimization_decision",
+              "D10_data_knowledge"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "text_quality": {
+          "enum": [
+            "Q1_clean_text",
+            "Q2_ocr_usable",
+            "Q3_ocr_poor",
+            "Q4_metadata_only"
+          ]
+        },
+        "decision_tasks_supported": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "pollutant_identification",
+              "toxicity_risk_assessment",
+              "monitoring_detection",
+              "treatment_recommendation",
+              "operation_constraint_assessment",
+              "cost_constraint_assessment",
+              "regulation_management",
+              "optimization_decision",
+              "knowledge_base_construction"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "decision_summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["one_sentence_value"],
+      "properties": {
+        "one_sentence_value": { "type": ["string", "null"] },
+        "key_findings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "transferable_value": { "type": ["string", "null"] },
+        "main_limitations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "knowledge_items": {
+      "type": "array",
+      "description": "参数级知识条目，由模型根据文献内容自主决定提取什么",
+      "items": { "$ref": "#/$defs/knowledge_item" }
+    },
+    "vector_index_records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/vector_record" }
+    },
+    "quality_control": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [],
+      "properties": {
+        "json_parse_check": { "enum": ["pass", "fail"] },
+        "evidence_coverage": { "type": ["string", "null"] },
+        "missing_important_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suspicious_items": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "manual_review_recommendations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "processing_notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["page", "locator", "evidence_text", "quality"],
+      "properties": {
+        "page": { "type": ["integer", "string", "null"] },
+        "locator": { "type": ["string", "null"] },
+        "evidence_text": { "type": ["string", "null"] },
+        "quality": {
+          "enum": ["reliable", "needs_review", "suspicious", "unavailable"]
+        }
+      }
+    },
+    "knowledge_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["record_id", "parameter", "value", "domain_direction", "evidence"],
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "description": "递增编号 ki_001, ki_002, ..."
+        },
+        "parameter": {
+          "type": "string",
+          "description": "参数/事实名称，建议中英双语"
+        },
+        "value": {
+          "description": "具体数值或结论"
+        },
+        "unit": {
+          "type": ["string", "null"],
+          "description": "单位，无数值时填 null"
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "参数成立的条件：物种、材料、介质、温度、pH、规模等"
+        },
+        "domain_direction": {
+          "enum": [
+            "D1_pollutant_source",
+            "D2_produced_water_fate",
+            "D3_toxicity_risk",
+            "D4_monitoring_detection",
+            "D5_treatment_technology",
+            "D6_operation_performance",
+            "D7_cost_constraint",
+            "D8_regulation_management",
+            "D9_optimization_decision",
+            "D10_data_knowledge"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "notes": {
+          "type": ["string", "null"],
+          "description": "补充说明、换算、不确定性、与其他条目的关系"
+        }
+      }
+    },
+    "vector_record": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["record_id", "title_zh", "summary_zh", "embedding_text_zh"],
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "description": "递增编号 vr_001, vr_002, ..."
+        },
+        "chunk_type": {
+          "enum": [
+            "bibliographic",
+            "pollutant",
+            "fate_transport",
+            "risk",
+            "monitoring",
+            "treatment",
+            "operation",
+            "cost",
+            "regulation",
+            "decision_model",
+            "data_knowledge",
+            "transferable",
+            "minimal_keep"
+          ]
+        },
+        "domain_direction": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "D1_pollutant_source",
+              "D2_produced_water_fate",
+              "D3_toxicity_risk",
+              "D4_monitoring_detection",
+              "D5_treatment_technology",
+              "D6_operation_performance",
+              "D7_cost_constraint",
+              "D8_regulation_management",
+              "D9_optimization_decision",
+              "D10_data_knowledge"
+            ]
+          }
+        },
+        "title_zh": { "type": "string" },
+        "summary_zh": { "type": "string" },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "embedding_text_zh": {
+          "type": "string",
+          "description": "150-300字中文连贯文本，含关键数值和条件，适合直接做embedding"
+        },
+        "source_evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    }
+  }
+}

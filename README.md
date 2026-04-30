@@ -1,4 +1,4 @@
-# 📑 LitExtract — AI 文献数据提参助手
+# LitExtract - AI 文献数据提参助手
 
 基于 [OpenClaw](https://github.com/nicholasgriffintn/openclaw) 框架的科学文献结构化参数提取智能体。采用 **文本锚定 + 视觉精读 + 硬校验** 混合架构，支持从 PDF 论文中按用户自定义键值结构精确提取数据，输出带溯源的结构化 JSON。
 
@@ -32,15 +32,16 @@
 
 - **Node.js** >= 20.x
 - **Python** >= 3.9（用于 PyMuPDF 和 pdf2image）
-- **阿里百炼 DashScope API Key**（[免费申请](https://help.aliyun.com/zh/model-studio/get-api-key)）
+- **阿里百炼 Coding Plan API Key**（用于 Qwen 模型）
+- **小米 Mimo API Key**（用于 Mimo provider；当前配置会在启动前检查）
 - **poppler-utils**（Linux 需要 `sudo apt install poppler-utils`，macOS 用 `brew install poppler`）
 
 ### 部署步骤
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/Water-Quality-Risk-Control-Engineering/paper-param-extractor.git
-cd paper-param-extractor
+git clone https://github.com/YaoPan-NJU/Literature-extracting.git
+cd Literature-extracting
 
 # 2. 运行一键部署脚本
 chmod +x scripts/setup.sh
@@ -49,8 +50,9 @@ bash scripts/setup.sh
 
 部署脚本会自动完成：
 - 安装 OpenClaw CLI (`npm install -g openclaw`)
-- 配置阿里百炼 API Key（交互式输入）
-- 安装 Python 依赖（PyMuPDF、pdf2image）
+- 将 API Key 写入本地 `.env`（不会提交到 Git）
+- 安装 Python 依赖（PyMuPDF、pdf2image、openai、jsonschema）
+- 注册 `lit-extract` agent
 - 启动 OpenClaw Gateway（端口 18789）
 
 ### 手动配置
@@ -64,11 +66,21 @@ npm install -g openclaw
 # 安装 Python 依赖
 pip install PyMuPDF pdf2image
 
-# 编辑 openclaw.json，将 YOUR_DASHSCOPE_API_KEY 替换为你的百炼 API Key
-# 获取 Key: https://bailian.console.aliyun.com/
+# 配置本地环境变量
+cp .env.example .env
+# 编辑 .env，填入：
+# BAILIAN_CODING_PLAN_API_KEY=...
+# MIMO_API_KEY=...
 
-# 启动服务
-openclaw gateway --force
+# 注册 agent
+openclaw agents add lit-extract \
+  --workspace ./workspace \
+  --agent-dir ./agents/lit-extract/agent \
+  --model bailian/qwen3.6-plus \
+  --non-interactive
+
+# 启动服务（会加载 .env 并设置 OPENCLAW_CONFIG_PATH）
+scripts/start_gateway_env.sh
 
 # 验证
 openclaw status
@@ -132,6 +144,24 @@ openclaw tui
 ```
 
 每篇论文独立执行完整校验流水线，最终合并为带 `paper_id` 的统一表格。
+
+### 场景 5：批量处理 PDF 文件夹
+
+```bash
+scripts/batch_extract_pdfs.sh \
+  --pdf-dir "/path/to/pdfs" \
+  --out-dir "outputs/pilot_20" \
+  --limit 20 \
+  --dry-run
+
+scripts/batch_extract_pdfs.sh \
+  --pdf-dir "/path/to/pdfs" \
+  --out-dir "outputs/pilot_20" \
+  --limit 20 \
+  --timeout-seconds 600
+```
+
+默认提示词在 `prompts/jjj_single_agent_extraction_prompt.md`，输出 JSON 可按 `schema/jjj_literature_extraction.schema.json` 校验。
 
 ## 🔧 提取字段约束语法
 
@@ -279,12 +309,22 @@ PDF 论文
 ## 📁 项目结构
 
 ```
-lit-extract/
+Literature-extracting/
 ├── openclaw.json              # OpenClaw 主配置
 ├── README.md                  # 本文件
 ├── .gitignore
+├── .env.example               # 本地环境变量模板，.env 不提交
 ├── scripts/
-│   └── setup.sh               # 一键部署脚本
+│   ├── setup.sh               # 一键部署脚本
+│   ├── start_gateway_env.sh   # 加载 .env 后启动 Gateway
+│   ├── batch_extract_pdfs.sh  # 批量 PDF 提取
+│   └── preprocess.py          # PDF 文本锚定与视觉预处理
+├── prompts/
+│   └── jjj_single_agent_extraction_prompt.md
+├── schema/
+│   └── jjj_literature_extraction.schema.json
+├── docs/
+│   └── knowledge-extraction/
 ├── workspace/
 │   ├── IDENTITY.md            # 文献提参助手 角色定义
 │   ├── SOUL.md                # 行为准则
@@ -307,9 +347,8 @@ lit-extract/
 - [OpenClaw 文档](https://github.com/nicholasgriffintn/openclaw)
 - [阿里百炼 DashScope](https://bailian.console.aliyun.com/)
 - [PyMuPDF 文档](https://pymupdf.readthedocs.io/)
-- [示例提取结果（Andersson 2026, Angew. Chem.）](https://github.com/Water-Quality-Risk-Control-Engineering/paper-param-extractor/blob/main/examples/extraction_result_andersson_2026.json)
+- [示例提取结果（Andersson 2026, Angew. Chem.）](examples/extraction_result_andersson_2026.json)
 
 ---
 
-**作者**: [Water Quality Risk Control Engineering](https://github.com/Water-Quality-Risk-Control-Engineering)
-**维护者**: Axl1Huang
+**仓库**: [YaoPan-NJU/Literature-extracting](https://github.com/YaoPan-NJU/Literature-extracting)
