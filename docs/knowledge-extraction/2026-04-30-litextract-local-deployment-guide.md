@@ -53,6 +53,12 @@ cp .env.example .env
 bash scripts/setup.sh --existing-openclaw
 ```
 
+如果机器上已经有同名 `lit-extract`，并且需要把它重新指向当前 clone 的目录：
+
+```bash
+bash scripts/setup.sh --existing-openclaw --force-register
+```
+
 可选 iMessage 绑定：
 
 ```bash

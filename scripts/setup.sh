@@ -6,6 +6,7 @@ set -e
 
 START_GATEWAY=1
 INSTALL_OPENCLAW=1
+FORCE_REGISTER=0
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -28,6 +29,7 @@ Usage:
 Options:
   --existing-openclaw    Use an existing OpenClaw installation and do not start/restart Gateway.
   --no-start-gateway     Install dependencies and register the agent, but leave Gateway untouched.
+  --force-register       Recreate the lit-extract agent if it is already registered.
   -h, --help             Show this help.
 USAGE
 }
@@ -41,6 +43,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-start-gateway)
             START_GATEWAY=0
+            shift
+            ;;
+        --force-register)
+            FORCE_REGISTER=1
             shift
             ;;
         -h|--help)
@@ -167,7 +173,19 @@ fi
 # ---- Register Agent ----
 echo -e "${YELLOW}[5/6] 注册 lit-extract Agent...${NC}"
 if openclaw agents list 2>/dev/null | grep -q "lit-extract"; then
-    echo -e "${GREEN}  lit-extract 已注册 ✅${NC}"
+    if [[ "$FORCE_REGISTER" -eq 1 ]]; then
+        echo -e "${YELLOW}  lit-extract 已存在，正在重新注册...${NC}"
+        openclaw agents delete lit-extract --force >/dev/null 2>&1 || true
+        openclaw agents add lit-extract \
+            --workspace "$PWD/workspace" \
+            --agent-dir "$PWD/agents/lit-extract/agent" \
+            --model bailian/qwen3.6-plus \
+            --non-interactive
+        echo -e "${GREEN}  lit-extract 重新注册完成 ✅${NC}"
+    else
+        echo -e "${GREEN}  lit-extract 已注册 ✅${NC}"
+        echo "  如需把已存在的同名 agent 指向当前目录，请重新运行: bash scripts/setup.sh --force-register"
+    fi
 else
     openclaw agents add lit-extract \
         --workspace "$PWD/workspace" \
@@ -198,8 +216,9 @@ echo -e "${GREEN}  部署完成！📑 LitExtract 已就绪${NC}"
 echo -e "${GREEN}════════════════════════════════════════════${NC}"
 echo ""
 echo "  快速开始:"
+echo "    export OPENCLAW_CONFIG_PATH=\"$PWD/openclaw.json\""
 echo "    openclaw tui                # 终端对话"
-echo "    openclaw agent --message \"帮我从 PDF 提取文献参数\""
+echo "    openclaw agent --local --agent lit-extract --message \"帮我从 PDF 提取文献参数\""
 echo "    openclaw status             # 查看状态"
 echo ""
 echo "  Web UI: http://127.0.0.1:18789"

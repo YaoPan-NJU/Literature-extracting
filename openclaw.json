@@ -45,7 +45,7 @@
             "input": [
               "text"
             ],
-            "contextWindow": 131072,
+            "contextWindow": 1000000,
             "maxTokens": 16384
           }
         ]

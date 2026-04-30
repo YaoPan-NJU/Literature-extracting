@@ -1,30 +1,30 @@
-# LitExtract - AI 文献数据提参助手
+# LitExtract — AI 文献数据提参助手
 
-基于 [OpenClaw](https://github.com/nicholasgriffintn/openclaw) 框架的科学文献结构化参数提取智能体。采用 **文本锚定 + 视觉精读 + 硬校验** 混合架构，支持从 PDF 论文中按用户自定义键值结构精确提取数据，输出带溯源的结构化 JSON。
+基于 [OpenClaw](https://github.com/nicholasgriffintn/openclaw) 框架的科学文献结构化参数提取智能体。采用 **模型自主判断 + 参数级条目 + 证据定位** 架构，从 PDF 文献中提取可进入知识库和向量库的结构化 JSON。
 
 ## 🎯 核心能力
 
 | 能力 | 说明 |
 |------|------|
-| **PDF 文本锚定** | PyMuPDF 提取文本层，自动识别标题/DOI/作者/关键词作为不可幻觉锚点 |
-| **选择性视觉精读** | 仅对有图表的页面做多模态视觉精读（Qwen3.6-plus），跳过参考文献和晶体学数据页 |
-| **约束驱动提参** | 用户定义键值结构 + 筛选条件，模型按约束精确提取 |
-| **三级硬校验** | Level 1 元数据一致性 → Level 2 实体存在性 → Level 3 数值回溯，杜绝幻觉数据 |
-| **溯源标记** | 每个提取值标注来源页码和表格编号，质量分 reliable / needs_review / suspicious |
-| **多文献对比** | 支持多篇论文并行提取，输出带 paper_id 的统一 JSON |
+| **模型自主提取** | 模型读完文献后自主判断"这篇对决策平台有什么价值"，不按固定模板填空 |
+| **参数级知识条目** | 每条知识是一个具体的参数/事实（数值、单位、条件），带证据页码和质量标记 |
+| **自动路由分类** | 自动判断相关性（R1-R4）、文献类型（T1-T4）、领域方向（D1-D10） |
+| **向量库条目生成** | 提取时同步生成中文摘要条目，可直接用于 embedding 和 RAG 检索 |
+| **证据定位** | 每个提取值标注来源页码和表格/图号，质量分 reliable / needs_review / suspicious |
+| **批量处理** | 支持整个文件夹批量提取，断点续跑，失败清单，日志追踪 |
 
 ## ⚡ 性能参考
 
-以 **84 页 Angew. Chem. 论文**（含 74 页 SI）为基准：
+18 篇多类型文献 pilot 测试结果（中英文专利、期刊、学位论文、书本章节）：
 
 | 指标 | 数值 |
 |------|------|
-| **总耗时（并行优化）** | **~5-7 分钟**（vs 串行 24 分钟） |
-| **视觉精读页数** | ~17 页（并行处理，~1 分钟完成） |
-| **API 成本** | ~¥0.50-0.80 |
-| **提取记录数** | 7 条（7 种 PFAS 污染物） |
-| **数据溯源率** | 100%（每个值标注页码） |
-| **幻觉记录** | 0（三级硬校验通过） |
+| **成功率** | 16/18（89%） |
+| **Schema 通过率** | 16/16（100%） |
+| **平均处理时间** | ~4 分钟/篇 |
+| **总 knowledge_items** | 141 条（16 篇） |
+| **总 vector_records** | 45 条 |
+| **R4 最小保留** | 平均 2.3 条 / 篇（vs R1/R2 的 14 条） |
 
 ## 📦 部署方案
 
@@ -33,7 +33,7 @@
 - **Python** >= 3.9（用于 PyMuPDF、pdf2image 和批处理脚本）
 - **阿里百炼 Coding Plan API Key**（用于 Qwen 模型）
 - **小米 Mimo API Key**（用于 Mimo provider；当前配置会在启动前检查）
-- **poppler-utils**（Linux 需要 `sudo apt install poppler-utils`，macOS 用 `brew install poppler`）
+- **poppler-utils**（Linux: `sudo apt install poppler-utils`，macOS: `brew install poppler`）
 
 ### 方案 A：已有 OpenClaw（推荐给 Mac mini / iMessage 用户）
 
@@ -65,7 +65,13 @@ bash scripts/setup.sh --existing-openclaw
 - 安装 Python 依赖
 - 注册 `lit-extract` agent
 
-如果要让 iMessage 消息默认路由到该 agent，可按你的现有 channel 设计绑定：
+如果这台机器以前注册过同名 `lit-extract`，并且你想把它重新指向当前 clone 的目录：
+
+```bash
+bash scripts/setup.sh --existing-openclaw --force-register
+```
+
+如果要让 iMessage 消息默认路由到该 agent：
 
 ```bash
 openclaw agents bind --agent lit-extract --bind imessage
@@ -75,7 +81,7 @@ openclaw agents bind --agent lit-extract --bind imessage
 
 ```bash
 export OPENCLAW_CONFIG_PATH="$PWD/openclaw.json"
-openclaw agent --local --agent lit-extract --message "从 /path/to/paper.pdf 提取文献参数，输出 JSON"
+openclaw agent --local --agent lit-extract --message "从 /path/to/paper.pdf 提取文献参数"
 ```
 
 ### 方案 B：未安装 OpenClaw（新电脑从零部署）
@@ -119,6 +125,7 @@ scripts/start_gateway_env.sh
 
 ```bash
 cp .env.example .env
+# 编辑 .env，填入 API Key
 
 export OPENCLAW_CONFIG_PATH="$PWD/openclaw.json"
 openclaw agents add lit-extract \
@@ -130,77 +137,42 @@ openclaw agents add lit-extract \
 # 如需启动本项目 Gateway
 scripts/start_gateway_env.sh
 
-# 验证 Gateway
-openclaw status
+# 验证
+curl -s http://127.0.0.1:18789/health
 ```
 
 ## 📖 使用教程
 
-### 场景 1：Web UI 对话式提参（推荐新手）
-
-1. 打开浏览器访问 `http://127.0.0.1:18789`
-2. 在对话框输入：
-
-```
-帮我从 ~/papers/Andersson2026.pdf 中提取所有 PFAS 吸附去除数据：
-
-提取字段：
-- pollutant_name: PFAS污染物名称
-- material_type: 吸附剂类型
-- target_pollutant: 目标污染物（含分子式、分子量）
-- host_guest_stoichiometry: 主客体化学计量比
-- removal_rate_percent: 去除率(%)
-- adsorption_capacity_mg_g: 吸附容量(mg/g)
-- binding_thermodynamics: 结合热力学参数
-- adsorption_mechanism: 吸附机理
-- water_quality_tested: 测试水质条件
-
-约束：每种PFAS一条记录，包含水质信息。
-```
-
-3. LitExtract 会自动执行流水线，~5-7 分钟后输出结构化 JSON
-
-### 场景 2：命令行对话
+### 场景 1：命令行单篇提参
 
 ```bash
-openclaw agent --message "从 ~/papers/Zhang2024.pdf 提取 MOF 的 BET 比表面积、孔径分布和吸附容量数据，输出 JSON"
+export OPENCLAW_CONFIG_PATH="$PWD/openclaw.json"
+openclaw agent --local --agent lit-extract --timeout 300 \
+  --message "$(printf '请读取并提取以下 PDF：\n%s\n\n请严格遵循项目提示词，只输出 JSON。\n\n' '/path/to/paper.pdf'; cat prompts/jjj_single_agent_extraction_prompt.md)"
 ```
 
-### 场景 3：终端 UI（TUI）
+模型会自主判断文献内容，提取有价值的参数级知识条目，输出结构化 JSON。
+
+### 场景 2：终端 UI（TUI）
 
 ```bash
+export OPENCLAW_CONFIG_PATH="$PWD/openclaw.json"
 openclaw tui
 ```
 
 进入交互界面后，像聊天一样提出提取需求。
 
-### 场景 4：多文献对比提参
-
-```
-从这三篇论文中提取 MOF 材料性能对比数据：
-1. ~/papers/Li2025.pdf
-2. ~/papers/Wang2024.pdf
-3. ~/papers/Zhang2026.pdf
-
-提取字段：
-- material_name: 材料名称
-- BET_surface_area: 比表面积(m²/g)
-- pore_volume: 总孔容(cm³/g)
-- CO2_uptake: CO₂吸附量(mmol/g)
-- adsorption_enthalpy: 吸附焓(kJ/mol)
-```
-
-每篇论文独立执行完整校验流水线，最终合并为带 `paper_id` 的统一表格。
-
-### 场景 5：批量处理 PDF 文件夹
+### 场景 3：批量处理 PDF 文件夹
 
 ```bash
+# 先 dry run 查看待处理文件
 scripts/batch_extract_pdfs.sh \
   --pdf-dir "/path/to/pdfs" \
   --out-dir "outputs/pilot_20" \
   --limit 20 \
   --dry-run
 
+# 正式跑
 scripts/batch_extract_pdfs.sh \
   --pdf-dir "/path/to/pdfs" \
   --out-dir "outputs/pilot_20" \
@@ -208,113 +180,135 @@ scripts/batch_extract_pdfs.sh \
   --timeout-seconds 600
 ```
 
-默认提示词在 `prompts/jjj_single_agent_extraction_prompt.md`，输出 JSON 可按 `schema/jjj_literature_extraction.schema.json` 校验。
+批量输出目录结构：
 
-## 🔧 提取字段约束语法
-
-用户可以自定义提取结构。以下是字段定义示例：
-
-```yaml
-提取字段：
-- pollutant_name: PFAS污染物名称（字符串）
-- material_type: 吸附剂类型代码（字符串）
-- specific_surface_area_m2_g: BET比表面积 m²/g（数值）
-- pore_diameter_A: 介孔孔径 Å（数值）
-- target_pollutant: 目标污染物含分子式（字符串）
-- host_guest_stoichiometry: 主客体化学计量比（字符串，如 1:4）
-- adsorption_performance:
-    removal_rate_percent: 去除率%（数值）
-    adsorption_capacity_mg_g: 吸附容量 mg/g（数值）
-    kinetics: 动力学描述（字符串）
-    regeneration: 再生性能描述（字符串）
-- binding_thermodynamics:
-    log_K: 结合常数（数值）
-    delta_H_kJ_mol: 焓变 kJ/mol（数值）
-    delta_S: 熵变描述（字符串）
-- water_quality_tested: 水质条件（含离子浓度、pH等）
-
-约束条件：
-- 每种污染物一条记录
-- 优先采用表格数据
-- 数值保留原文单位
-- 文献中未给出的字段设为 null
+```
+outputs/pilot_20/
+├── json/          ← 每篇 PDF 的结构化 JSON（入库用）
+├── raw/           ← OpenClaw 原始输出（调试用）
+├── logs/          ← 每篇处理日志
+├── prompts/       ← 每篇实际发送的提示词
+└── manifests/
+    ├── success.tsv    ← 成功清单
+    ├── failures.tsv   ← 失败清单和原因
+    └── pdf_list.txt   ← PDF 清单
 ```
 
-## 📊 输出格式
+同一输出目录重跑时，已有有效 JSON 的 PDF 会自动跳过（断点续跑）。用 `--force` 强制重跑。
 
-提取结果为一个标准 JSON，核心结构：
+## 📊 输出格式（v2）
+
+每个 PDF 输出一个 JSON 文件，核心结构：
 
 ```json
 {
-  "extraction_meta": {
-    "source": "论文标题（从文本层硬提取，不可幻觉）",
-    "doi": "10.1002/anie.202526027",
-    "authors": "作者列表",
-    "total_records": 7,
-    "pipeline": "text-anchored + visual-enhanced + hard-validated"
+  "schema_version": "jjj-v2",
+  "paper_id": "Yuan_2015_coastal_petroleum_degrading_bacteria",
+  "bibliographic_metadata": {
+    "title": "海岸带石油降解菌的分离及多样性分析",
+    "authors": ["袁梦"],
+    "year": 2015,
+    "abstract": "..."
   },
-  "field_definitions": { /* 用户定义的字段说明 */ },
-  "data": [
+  "routing": {
+    "relevance_level": "R2_domain_direct",
+    "relevance_reason": "研究海岸带石油降解菌，可迁移至近海油气田生物修复",
+    "document_type": "T4_thesis_book_chapter",
+    "domain_directions": ["D1_pollutant_source", "D5_treatment_technology"],
+    "text_quality": "Q1_clean_text"
+  },
+  "decision_summary": {
+    "one_sentence_value": "该论文分离出3株石油降解菌，量化了降解率，为生物修复提供菌种资源",
+    "key_findings": ["菌株A降解率30.52%", "组合菌降解率高于单菌"],
+    "transferable_value": null,
+    "main_limitations": ["仅限实验室规模"]
+  },
+  "knowledge_items": [
     {
-      "pollutant_name": "PFBA",
-      "BET_surface_area": 403,
-      "removal_rate_percent": 98,
-      "_source": {
-        "pollutant_name": "Page 2, Table 1",
-        "BET_surface_area": "Page 7, Section 2.3",
-        "removal_rate_percent": "Page 65, Table S12"
+      "record_id": "ki_001",
+      "parameter": "菌株A鉴定与降解率 Strain A identification and degradation rate",
+      "value": "Gallaecimonas pentaromativorans，降解率30.52%",
+      "unit": "%",
+      "context": {
+        "conditions": "原油为唯一碳源，28°C，150rpm，7天",
+        "scale": "实验室摇瓶"
       },
-      "_quality": {
-        "BET_surface_area": "reliable",
-        "removal_rate_percent": "reliable"
-      }
+      "domain_direction": "D5_treatment_technology",
+      "evidence": [
+        {
+          "page": 25,
+          "locator": "Table 3",
+          "evidence_text": "菌株A降解率30.52%",
+          "quality": "reliable"
+        }
+      ],
+      "notes": null
     }
   ],
-  "validation_report": {
-    "level_1_metadata": "PASS",
-    "level_2_entities_removed": 0,
-    "level_3_values_reliable": 15
-  }
+  "vector_index_records": [
+    {
+      "record_id": "vr_001",
+      "chunk_type": "treatment",
+      "domain_direction": ["D5_treatment_technology"],
+      "title_zh": "海岸带石油降解菌的分离与降解性能",
+      "summary_zh": "从黄岛输油管线爆炸事故附近海域分离出3株石油降解菌...",
+      "keywords": ["石油降解菌", "生物修复", "海岸带"],
+      "embedding_text_zh": "从受污染海域分离出3株石油降解菌：Gallaecimonas pentaromativorans降解率30.52%...",
+      "source_evidence": [{"page": 25, "locator": "Table 3", "evidence_text": "...", "quality": "reliable"}]
+    }
+  ],
+  "quality_control": {
+    "json_parse_check": "pass",
+    "evidence_coverage": "所有知识条目均有证据定位",
+    "missing_important_fields": [],
+    "suspicious_items": [],
+    "manual_review_recommendations": []
+  },
+  "processing_notes": []
 }
 ```
 
-## 🏗️ 流水线架构
+### 关键设计理念
+
+- **信封格式**：顶层结构固定（元数据、路由、质量控制），中间 `knowledge_items` 由模型自由组织
+- **参数级条目**：每条知识是一个具体的参数/事实，不是段落摘要
+- **领域方向是标签不是模板**：D1-D10 帮助分类，不是每篇都要填满
+- **R4 最小保留**：低相关文献只保留题录和极少量信息，不做大量展开
+- **向量条目自动生成**：`vector_index_records` 在提取时同步生成，可直接用于 embedding
+
+## 🏗️ 提取流程
 
 ```
 PDF 论文
   │
-  ├─ Stage 0: PyMuPDF 文本锚定 (< 1s, 零 API 成本)
-  │   ├─ 元数据硬提取 → 标题/DOI/作者/关键词
-  │   ├─ 智能分页 → data_page / text_page / skip_page
-  │   └─ 校验基准：全文文本层
+  ├─ 阶段 1：理解文献
+  │   └─ 模型通读论文，理解研究内容、方法、结论
   │
-  ├─ Stage 1: 选择性视觉精读（仅 data_page）
-  │   ├─ pdf2image → 高清截图 (300 DPI)
-  │   └─ Qwen3.6-plus 多模态 → 图表 Markdown 转录
+  ├─ 阶段 2：路由分类
+  │   ├─ 相关性：R1 直接相关 / R2 领域直接 / R3 可迁移 / R4 低相关
+  │   ├─ 文献类型：T1 期刊 / T2 专利 / T3 标准 / T4 学位论文/书本
+  │   └─ 领域方向：D1-D10 按实际涉及内容标注
   │
-  ├─ Stage 2: 合并 + 约束提参
-  │   ├─ 文本层(text_page) + 视觉层(data_page) 合并
-  │   ├─ 注入元数据锚点到 Prompt
-  │   └─ Qwen3.6-plus 文本模式 → 结构化 JSON
+  ├─ 阶段 3：自主提取
+  │   ├─ 模型判断"这篇对决策平台有什么价值"
+  │   ├─ 提取参数级 knowledge_items（带证据和质量标记）
+  │   └─ 生成 vector_index_records（中文摘要，适合 embedding）
   │
-  └─ Stage 3: 三级硬校验（纯本地 Python）
-      ├─ Level 1: 元数据一致性（标题/DOI/作者 vs 锚点）
-      ├─ Level 2: 实体存在性（材料/污染物在原文中出现频次）
-      └─ Level 3: 数值回溯（关键数值在原文文本中可查）
-          ↓
-     输出最终 JSON（带溯源标记 + 校验报告）
+  └─ 阶段 4：自检输出
+      ├─ JSON 格式校验
+      ├─ 枚举值校验
+      └─ 证据覆盖率检查
 ```
 
 ## ❓ 常见问题
 
 <details>
-<summary><b>如何获取阿里百炼 API Key？</b></summary>
+<summary><b>如何获取阿里百炼 Coding Plan API Key？</b></summary>
 
-1. 访问 [阿里云百炼控制台](https://bailian.console.aliyun.com/)
-2. 开通"模型服务" → 获取 API Key
-3. 新用户有免费配额（100 万 tokens）
-4. 将 Key 填入 `openclaw.json` 的 `models.providers.bailian.apiKey` 字段
-5. 或运行 `bash scripts/setup.sh` 交互式输入
+1. 访问 [阿里云百炼控制台](https://bailian.console.aliyun.com/?tab=model#/efm/coding_plan)
+2. 开通 Coding Plan → 获取 API Key
+3. 将 Key 填入项目 `.env` 文件的 `BAILIAN_CODING_PLAN_API_KEY` 字段
+4. 或运行 `bash scripts/setup.sh` 交互式输入
 </details>
 
 <details>
@@ -322,79 +316,84 @@ PDF 论文
 
 - 典型 20-40 页论文：~3-5 分钟
 - 含详细 SI 的长论文（80+ 页）：~5-7 分钟
-- 通过并行预处理器，Stage 1 视觉精读从 12 分钟压缩到 ~1 分钟
+- 书本章节、短专利：~2-3 分钟
 </details>
 
 <details>
 <summary><b>提取结果的质量如何？</b></summary>
 
-三级硬校验确保：
-- 元数据（标题/DOI/作者）100% 与原文一致
-- 数据实体（材料/污染物）在原文中存在
-- 数值可在原文中回溯验证
-- 幻觉数据自动标记或删除
+每个 knowledge_item 带有证据定位和质量标记：
+- `reliable`：原文文本层可查，数值/单位清晰
+- `needs_review`：来自图表估读或 OCR，需人工确认
+- `suspicious`：在原文中找不到对应内容，可能是幻觉
 </details>
 
 <details>
 <summary><b>支持哪些语言的论文？</b></summary>
 
-中英文均可。Qwen3.6-plus 对中英文混合文档有良好的多模态理解能力。
+中英文均可。Qwen3.6-plus 对中英文混合文档有良好的理解能力。
 </details>
 
 <details>
 <summary><b>如果 PDF 是扫描版怎么办？</b></summary>
 
-如果 PyMuPDF 文本层为空，系统自动回退到全页视觉精读模式，并在 extraction_notes 中标注精度风险。建议优先使用带文本层的原生 PDF。
+如果 PyMuPDF 文本层为空，系统自动回退到视觉模式，并在 `text_quality` 中标记 `Q3_ocr_poor` 或 `Q4_metadata_only`。建议优先使用带文本层的原生 PDF。
 </details>
 
 <details>
-<summary><b>可以提取补充材料（SI）中的数据吗？</b></summary>
+<summary><b>如何校验批量输出？</b></summary>
 
-可以。SI 中的表格数据（如去除率表、BET 数据表）可以通过 PyMuPDF 文本层直接提取。SI 中的图表（如 N₂ 吸附等温线、XRD 谱图）在视觉精读范围内。
+```bash
+# Schema 校验
+source .venv/bin/activate
+python3 -c "
+import json, glob
+from jsonschema import validate, ValidationError
+schema = json.load(open('schema/jjj_literature_extraction.schema.json'))
+for f in glob.glob('outputs/pilot_20/json/*.json'):
+    data = json.load(open(f))
+    try:
+        validate(instance=data, schema=schema)
+    except ValidationError as e:
+        print(f'FAIL {f}: {e.message}')
+"
+```
 </details>
 
 ## 📁 项目结构
 
 ```
 Literature-extracting/
-├── openclaw.json              # OpenClaw 主配置
-├── README.md                  # 本文件
-├── .gitignore
-├── .env.example               # 本地环境变量模板，.env 不提交
+├── openclaw.json              # OpenClaw 主配置（模型 provider、Gateway、agent）
+├── .env.example               # 环境变量模板，.env 不提交
 ├── scripts/
-│   ├── setup.sh               # 一键部署脚本
+│   ├── setup.sh               # 一键部署脚本（支持 --existing-openclaw）
 │   ├── start_gateway_env.sh   # 加载 .env 后启动 Gateway
-│   ├── batch_extract_pdfs.sh  # 批量 PDF 提取
+│   ├── batch_extract_pdfs.sh  # 批量 PDF 提取（macOS/Linux 兼容）
 │   └── preprocess.py          # PDF 文本锚定与视觉预处理
 ├── prompts/
-│   └── jjj_single_agent_extraction_prompt.md
+│   └── jjj_single_agent_extraction_prompt.md   # v2 提示词（模型自主提取）
 ├── schema/
-│   └── jjj_literature_extraction.schema.json
-├── docs/
-│   └── knowledge-extraction/
+│   └── jjj_literature_extraction.schema.json   # v2 JSON Schema
 ├── workspace/
-│   ├── IDENTITY.md            # 文献提参助手 角色定义
+│   ├── IDENTITY.md            # Agent 角色定义
 │   ├── SOUL.md                # 行为准则
 │   ├── AGENTS.md              # 工作空间配置
-│   ├── TOOLS.md               # 工具链说明
-│   ├── USER.md                # 用户档案
-│   ├── HEARTBEAT.md           # 心跳任务
 │   └── skills/
 │       └── literature-data-extraction/
-│           └── SKILL.md       # ★ 文献提参技能定义（472 行协议）
+│           └── SKILL.md       # 文献提参技能定义
 └── agents/
     └── lit-extract/
         └── agent/
             ├── agent.json     # Agent 模型配置
-            └── models.json    # 模型参数（API Key 已脱敏）
+            └── models.json    # 模型参数
 ```
 
 ## 🔗 相关资源
 
 - [OpenClaw 文档](https://github.com/nicholasgriffintn/openclaw)
-- [阿里百炼 DashScope](https://bailian.console.aliyun.com/)
+- [阿里百炼 Coding Plan](https://bailian.console.aliyun.com/?tab=model#/efm/coding_plan)
 - [PyMuPDF 文档](https://pymupdf.readthedocs.io/)
-- [示例提取结果（Andersson 2026, Angew. Chem.）](examples/extraction_result_andersson_2026.json)
 
 ---
 
