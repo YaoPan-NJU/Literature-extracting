@@ -26,65 +26,112 @@
 | **数据溯源率** | 100%（每个值标注页码） |
 | **幻觉记录** | 0（三级硬校验通过） |
 
-## 📦 一键部署
+## 📦 部署方案
 
 ### 前置要求
 
-- **Node.js** >= 20.x
-- **Python** >= 3.9（用于 PyMuPDF 和 pdf2image）
+- **Python** >= 3.9（用于 PyMuPDF、pdf2image 和批处理脚本）
 - **阿里百炼 Coding Plan API Key**（用于 Qwen 模型）
 - **小米 Mimo API Key**（用于 Mimo provider；当前配置会在启动前检查）
 - **poppler-utils**（Linux 需要 `sudo apt install poppler-utils`，macOS 用 `brew install poppler`）
 
-### 部署步骤
+### 方案 A：已有 OpenClaw（推荐给 Mac mini / iMessage 用户）
+
+如果你的机器已经安装 OpenClaw，并且已经通过 iMessage、Web UI 或其他 channel 接入，不建议运行会重启 Gateway 的部署流程。只需要把本项目注册成一个新的 agent。
 
 ```bash
-# 1. 克隆仓库
 git clone https://github.com/YaoPan-NJU/Literature-extracting.git
 cd Literature-extracting
 
-# 2. 运行一键部署脚本
-chmod +x scripts/setup.sh
-bash scripts/setup.sh
-```
+# macOS
+brew install poppler
+pip3 install PyMuPDF pdf2image openai jsonschema
 
-部署脚本会自动完成：
-- 安装 OpenClaw CLI (`npm install -g openclaw`)
-- 将 API Key 写入本地 `.env`（不会提交到 Git）
-- 安装 Python 依赖（PyMuPDF、pdf2image、openai、jsonschema）
-- 注册 `lit-extract` agent
-- 启动 OpenClaw Gateway（端口 18789）
+# Linux / WSL
+sudo apt install -y poppler-utils
+pip3 install PyMuPDF pdf2image openai jsonschema
 
-### 手动配置
-
-如果一键部署不成功，手动操作：
-
-```bash
-# 安装 OpenClaw
-npm install -g openclaw
-
-# 安装 Python 依赖
-pip install PyMuPDF pdf2image
-
-# 配置本地环境变量
 cp .env.example .env
 # 编辑 .env，填入：
 # BAILIAN_CODING_PLAN_API_KEY=...
 # MIMO_API_KEY=...
 
-# 注册 agent
+bash scripts/setup.sh --existing-openclaw
+```
+
+这个模式会：
+- 保留现有 OpenClaw 和 iMessage Gateway，不启动或重启服务
+- 配置本项目 `.env`
+- 安装 Python 依赖
+- 注册 `lit-extract` agent
+
+如果要让 iMessage 消息默认路由到该 agent，可按你的现有 channel 设计绑定：
+
+```bash
+openclaw agents bind --agent lit-extract --bind imessage
+```
+
+也可以不改默认路由，直接命令行指定 agent：
+
+```bash
+export OPENCLAW_CONFIG_PATH="$PWD/openclaw.json"
+openclaw agent --local --agent lit-extract --message "从 /path/to/paper.pdf 提取文献参数，输出 JSON"
+```
+
+### 方案 B：未安装 OpenClaw（新电脑从零部署）
+
+Linux / WSL 可以直接运行一键脚本：
+
+```bash
+git clone https://github.com/YaoPan-NJU/Literature-extracting.git
+cd Literature-extracting
+
+bash scripts/setup.sh
+```
+
+脚本会安装或检查：
+- Node.js
+- OpenClaw CLI
+- Python 依赖
+- poppler-utils / poppler
+- 本地 `.env`
+- `lit-extract` agent
+- OpenClaw Gateway（端口 18789）
+
+macOS 新电脑建议先安装 Homebrew，然后执行：
+
+```bash
+brew install node poppler
+npm install -g openclaw
+pip3 install PyMuPDF pdf2image openai jsonschema
+
+git clone https://github.com/YaoPan-NJU/Literature-extracting.git
+cd Literature-extracting
+cp .env.example .env
+# 编辑 .env 后执行：
+bash scripts/setup.sh --no-start-gateway
+scripts/start_gateway_env.sh
+```
+
+### 手动配置
+
+如果不使用部署脚本，按下面步骤配置：
+
+```bash
+cp .env.example .env
+
+export OPENCLAW_CONFIG_PATH="$PWD/openclaw.json"
 openclaw agents add lit-extract \
   --workspace ./workspace \
   --agent-dir ./agents/lit-extract/agent \
   --model bailian/qwen3.6-plus \
   --non-interactive
 
-# 启动服务（会加载 .env 并设置 OPENCLAW_CONFIG_PATH）
+# 如需启动本项目 Gateway
 scripts/start_gateway_env.sh
 
-# 验证
+# 验证 Gateway
 openclaw status
-# 应显示: Gateway running on http://127.0.0.1:18789
 ```
 
 ## 📖 使用教程

@@ -4,6 +4,9 @@
 # ============================================================
 set -e
 
+START_GATEWAY=1
+INSTALL_OPENCLAW=1
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -17,17 +20,68 @@ echo "║     一键部署脚本 v1.0                    ║"
 echo "╚══════════════════════════════════════════╝"
 echo -e "${NC}"
 
+usage() {
+    cat <<'USAGE'
+Usage:
+  bash scripts/setup.sh [options]
+
+Options:
+  --existing-openclaw    Use an existing OpenClaw installation and do not start/restart Gateway.
+  --no-start-gateway     Install dependencies and register the agent, but leave Gateway untouched.
+  -h, --help             Show this help.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --existing-openclaw)
+            INSTALL_OPENCLAW=0
+            START_GATEWAY=0
+            shift
+            ;;
+        --no-start-gateway)
+            START_GATEWAY=0
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            usage
+            exit 2
+            ;;
+    esac
+done
+
+OS_NAME="$(uname -s)"
+
 # ---- Check Node.js ----
 if ! command -v node &> /dev/null; then
-    echo -e "${YELLOW}[1/6] Node.js 未安装，正在安装...${NC}"
-    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-    sudo apt install -y nodejs
+    echo -e "${YELLOW}[1/6] Node.js 未安装。${NC}"
+    if [[ "$OS_NAME" == "Linux" ]] && command -v apt >/dev/null 2>&1; then
+        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+        sudo apt install -y nodejs
+    elif [[ "$OS_NAME" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+        brew install node
+    else
+        echo -e "${RED}  请先安装 Node.js >= 20，然后重试。${NC}"
+        exit 2
+    fi
 else
     echo -e "${GREEN}[1/6] Node.js 已安装: $(node --version)${NC}"
 fi
 
 # ---- Install OpenClaw ----
-if ! command -v openclaw &> /dev/null; then
+if [[ "$INSTALL_OPENCLAW" -eq 0 ]]; then
+    if command -v openclaw &> /dev/null; then
+        echo -e "${GREEN}[2/6] 使用已有 OpenClaw: $(openclaw --version 2>&1 | head -1)${NC}"
+    else
+        echo -e "${RED}[2/6] 未找到 openclaw。去掉 --existing-openclaw 或先安装 OpenClaw。${NC}"
+        exit 2
+    fi
+elif ! command -v openclaw &> /dev/null; then
     echo -e "${YELLOW}[2/6] 安装 OpenClaw CLI...${NC}"
     npm install -g openclaw
 else
@@ -96,9 +150,15 @@ echo -e "${YELLOW}[4/6] 安装 Python 依赖...${NC}"
 if command -v python3 &> /dev/null; then
     pip3 install PyMuPDF pdf2image openai jsonschema 2>/dev/null || pip3 install PyMuPDF pdf2image openai jsonschema --user 2>/dev/null || echo "  ⚠️ pip 安装失败，请手动安装: pip install PyMuPDF pdf2image openai jsonschema"
     # Check poppler
-    if ! ldconfig -p 2>/dev/null | grep -q libpoppler || ! command -v pdftoppm &> /dev/null; then
+    if ! command -v pdftoppm &> /dev/null; then
         echo "  ⚠️ pdf2image 需要 poppler-utils，尝试安装..."
-        sudo apt install -y poppler-utils 2>/dev/null || echo "  请手动安装: sudo apt install poppler-utils"
+        if [[ "$OS_NAME" == "Linux" ]] && command -v apt >/dev/null 2>&1; then
+            sudo apt install -y poppler-utils 2>/dev/null || echo "  请手动安装: sudo apt install poppler-utils"
+        elif [[ "$OS_NAME" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+            brew install poppler || echo "  请手动安装: brew install poppler"
+        else
+            echo "  请手动安装 poppler-utils/poppler"
+        fi
     fi
 else
     echo -e "${YELLOW}  ⚠️ Python3 未安装，视觉精读功能需要 Python${NC}"
@@ -118,14 +178,18 @@ else
 fi
 
 # ---- Start Gateway ----
-echo -e "${YELLOW}[6/6] 启动 OpenClaw Gateway...${NC}"
-scripts/start_gateway_env.sh &
-sleep 3
+if [[ "$START_GATEWAY" -eq 1 ]]; then
+    echo -e "${YELLOW}[6/6] 启动 OpenClaw Gateway...${NC}"
+    scripts/start_gateway_env.sh &
+    sleep 3
 
-if curl -s http://127.0.0.1:18789/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Gateway 已启动: http://127.0.0.1:18789${NC}"
+    if curl -s http://127.0.0.1:18789/health > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ Gateway 已启动: http://127.0.0.1:18789${NC}"
+    else
+        echo -e "${RED}⚠️ Gateway 启动失败，请检查 OpenClaw 日志${NC}"
+    fi
 else
-    echo -e "${RED}⚠️ Gateway 启动失败，请检查日志: cat /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log${NC}"
+    echo -e "${GREEN}[6/6] 已跳过 Gateway 启动；现有 OpenClaw/iMessage 服务不会被重启。${NC}"
 fi
 
 echo ""

@@ -25,22 +25,70 @@
 
 ---
 
-## 2. 当前安装状态
+## 2. 两种部署场景
 
-| 组件 | 状态 | 说明 |
-|------|------|------|
-| OpenClaw CLI | ✅ v2026.4.27 | `/usr/bin/openclaw` |
-| Node.js | ✅ v22.22.2 | |
-| Python 3 | ✅ v3.12.3 | |
-| Python venv | ✅ | `.venv`，含 PyMuPDF + openai + jsonschema |
-| poppler-utils | ✅ | `pdftoppm` v24.02.0 |
-| `.env` API Keys | ✅ | Bailian Coding Plan + Mimo |
-| Gateway | ✅ | `http://127.0.0.1:18789` |
-| lit-extract agent | ✅ | 已注册 |
+### 2.1 已有 OpenClaw
+
+适用于已经在 Mac mini 或服务器上部署过 OpenClaw，并且已经接入 iMessage、Web UI、TUI 或其他 channel 的机器。
+
+原则：
+- 不重装 OpenClaw。
+- 不主动重启 Gateway。
+- 只安装本项目的 Python 依赖、配置 `.env`、注册 `lit-extract` agent。
+- 如果要通过 iMessage 使用，再按现有 OpenClaw 路由策略绑定 channel。
+
+推荐命令：
+
+```bash
+git clone https://github.com/YaoPan-NJU/Literature-extracting.git
+cd Literature-extracting
+
+# macOS
+brew install poppler
+pip3 install PyMuPDF pdf2image openai jsonschema
+
+cp .env.example .env
+# 填入 BAILIAN_CODING_PLAN_API_KEY 和 MIMO_API_KEY
+
+bash scripts/setup.sh --existing-openclaw
+```
+
+可选 iMessage 绑定：
+
+```bash
+openclaw agents bind --agent lit-extract --bind imessage
+```
+
+### 2.2 未安装 OpenClaw
+
+适用于新电脑、干净 Linux/WSL 或新 Mac。
+
+Linux / WSL：
+
+```bash
+git clone https://github.com/YaoPan-NJU/Literature-extracting.git
+cd Literature-extracting
+bash scripts/setup.sh
+```
+
+macOS：
+
+```bash
+brew install node poppler
+npm install -g openclaw
+pip3 install PyMuPDF pdf2image openai jsonschema
+
+git clone https://github.com/YaoPan-NJU/Literature-extracting.git
+cd Literature-extracting
+cp .env.example .env
+# 编辑 .env 后：
+bash scripts/setup.sh --no-start-gateway
+scripts/start_gateway_env.sh
+```
 
 ---
 
-## 3. 部署步骤（从零开始）
+## 3. 手动部署步骤（从零开始）
 
 ### 3.1 系统依赖（WSL Ubuntu）
 
@@ -60,6 +108,12 @@ sudo apt install -y nodejs
 
 ```bash
 sudo npm install -g openclaw
+```
+
+macOS 通常使用：
+
+```bash
+npm install -g openclaw
 ```
 
 ### 3.4 克隆仓库

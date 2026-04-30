@@ -23,6 +23,51 @@ load_dotenv() {
   done < "$env_file"
 }
 
+timestamp() {
+  python3 - <<'PY'
+from datetime import datetime, timezone
+print(datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"))
+PY
+}
+
+hash_path() {
+  local value="$1"
+  if command -v sha1sum >/dev/null 2>&1; then
+    printf '%s' "$value" | sha1sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$value" | shasum -a 1 | awk '{print $1}'
+  else
+    python3 - "$value" <<'PY'
+import hashlib
+import sys
+print(hashlib.sha1(sys.argv[1].encode("utf-8")).hexdigest())
+PY
+  fi
+}
+
+run_with_timeout() {
+  local timeout_seconds="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_seconds" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$timeout_seconds" "$@"
+  else
+    python3 - "$timeout_seconds" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout_seconds = int(sys.argv[1])
+cmd = sys.argv[2:]
+try:
+    completed = subprocess.run(cmd, timeout=timeout_seconds)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+sys.exit(completed.returncode)
+PY
+  fi
+}
+
 if [[ -f "$REPO_DIR/.env" ]]; then
   load_dotenv "$REPO_DIR/.env"
 fi
@@ -205,7 +250,7 @@ make_record_id() {
   if [[ -z "$safe" ]]; then
     safe="paper"
   fi
-  hash="$(printf '%s' "$pdf" | sha1sum | awk '{print $1}')"
+  hash="$(hash_path "$pdf")"
   printf '%s_%s' "$safe" "${hash:0:10}"
 }
 
@@ -301,7 +346,7 @@ write_failure() {
   local raw_path="$5"
   local log_path="$6"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$(date -Is)" "$pdf" "$stage" "$exit_code" "$reason" "$raw_path" "$log_path" >> "$FAILURES_TSV"
+    "$(timestamp)" "$pdf" "$stage" "$exit_code" "$reason" "$raw_path" "$log_path" >> "$FAILURES_TSV"
 }
 
 write_success() {
@@ -310,18 +355,26 @@ write_success() {
   local json_path="$3"
   local raw_path="$4"
   printf '%s\t%s\t%s\t%s\t%s\n' \
-    "$(date -Is)" "$pdf" "$record_id" "$json_path" "$raw_path" >> "$SUCCESS_TSV"
+    "$(timestamp)" "$pdf" "$record_id" "$json_path" "$raw_path" >> "$SUCCESS_TSV"
 }
 
-count=0
 : > "$PDF_LIST"
-while IFS= read -r -d '' pdf; do
-  count=$((count + 1))
-  printf '%s\n' "$pdf" >> "$PDF_LIST"
-  if [[ "$LIMIT" -gt 0 && "$count" -ge "$LIMIT" ]]; then
-    break
-  fi
-done < <(find "$PDF_DIR" -type f -iname '*.pdf' -print0 | sort -z)
+python3 - "$PDF_DIR" "$LIMIT" > "$PDF_LIST" <<'PY'
+import os
+import sys
+
+root = sys.argv[1]
+limit = int(sys.argv[2])
+paths = []
+for dirpath, _, filenames in os.walk(root):
+    for filename in filenames:
+        if filename.lower().endswith(".pdf"):
+            paths.append(os.path.join(dirpath, filename))
+for index, path in enumerate(sorted(paths), start=1):
+    print(path)
+    if limit > 0 and index >= limit:
+        break
+PY
 
 TOTAL="$(wc -l < "$PDF_LIST" | tr -d ' ')"
 echo "PDF folder: $PDF_DIR"
@@ -384,7 +437,7 @@ while IFS= read -r pdf; do
   fi
   agent_cmd+=(--message "$(cat "$prompt_path")")
 
-  if (cd "$REPO_DIR" && timeout "$TIMEOUT_SECONDS" "${agent_cmd[@]}" > "$raw_path" 2>> "$log_path"); then
+  if (cd "$REPO_DIR" && run_with_timeout "$TIMEOUT_SECONDS" "${agent_cmd[@]}" > "$raw_path" 2>> "$log_path"); then
     if extract_first_json "$raw_path" "$json_path" >> "$log_path" 2>&1 && is_valid_json "$json_path"; then
       write_success "$pdf" "$record_id" "$json_path" "$raw_path"
       echo "  ok: $json_path"
