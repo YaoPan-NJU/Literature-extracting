@@ -141,8 +141,8 @@ def main() -> None:
 | 统一成功清单 | `{rel(SUCCESS_TSV)}` |
 | 统一剩余队列 | `{rel(REMAINING_TSV)}` |
 | 统计摘要 | `{rel(PROGRESS_JSON)}` |
-| 运行时英文批量输出 | `outputs/en_literature_multi/`，启动新批次时自动创建 |
 | 统一输出根目录 | `outputs/extractions/` |
+| 批次运行目录 | `/tmp/openclaw/litextract_runs/<run_id>/`，保存 raw、logs、prompts 和本批 manifest |
 
 ## 分类进度
 
@@ -173,9 +173,11 @@ def main() -> None:
 ## 注意事项
 
 - `success.tsv` 和 `remaining_queue.tsv` 是避免遗漏、重复的主依据。
-- `scripts/multi_worker_extract.sh` 会跳过本批输出目录和 `outputs/extractions/` 中已存在的有效 JSON。
+- `scripts/multi_worker_extract.sh` 默认只跑 dashscope 和 mimo 两路，避免 bailian 配额不足时反复失败。
+- 确认百炼 Coding Plan 配额可用后，再加 `--include-bailian` 启用第三路。
+- `scripts/multi_worker_extract.sh` 会跳过 `outputs/extractions/` 中已存在的有效 JSON。
 - `outputs/extractions/` 是长期保留目录；批次运行目录可在合并后清理。
-- 三路并发必须使用独立 `--session-id`，当前 `scripts/multi_worker_extract.sh` 已按 worker 和批次号隔离。
+- 多 worker 并发必须使用独立 `--session-id`，当前脚本已按 worker 和批次号隔离。
 """
     OUT_DOC.write_text(content, encoding="utf-8")
     print(OUT_DOC)

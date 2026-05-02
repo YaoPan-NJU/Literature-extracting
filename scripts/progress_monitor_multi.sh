@@ -8,16 +8,16 @@ PROGRESS_FILE="/tmp/openclaw/extraction_progress.json"
 INTERVAL=30
 
 if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <OUT_DIR> <TOTAL_PDFS> [QUEUE_FILE]" >&2
+  echo "Usage: $0 <RUN_DIR> <TOTAL_PDFS> [QUEUE_FILE]" >&2
   exit 1
 fi
 
-OUT_DIR="$1"
+RUN_DIR="$1"
 TOTAL_PDFS="$2"
 QUEUE_FILE="${3:-/tmp/openclaw/multi_extract_queue.txt}"
 
-SUCCESS_TSV="$OUT_DIR/manifests/success.tsv"
-FAILURES_TSV="$OUT_DIR/manifests/failures.tsv"
+SUCCESS_TSV="$RUN_DIR/manifests/success.tsv"
+FAILURES_TSV="$RUN_DIR/manifests/failures.tsv"
 
 mkdir -p "$(dirname "$PROGRESS_FILE")"
 START_TIME="$(date +%s)"
@@ -33,10 +33,18 @@ while true; do
   processed=$((success_count + failure_count))
   elapsed=$(( $(date +%s) - START_TIME ))
 
+  # active workers
+  active_workers=0
+  for pidf in /tmp/openclaw/multi_extract_pids/worker_*.pid; do
+    [[ -f "$pidf" ]] && kill -0 "$(cat "$pidf")" 2>/dev/null && active_workers=$((active_workers + 1))
+  done
+
   eta_str="unknown"
   if [[ "$processed" -gt 0 && "$queued" -gt 0 ]]; then
     avg=$((elapsed / processed))
-    eta_s=$((avg * queued / 3))  # divide by 3 workers
+    eta_workers="$active_workers"
+    [[ "$eta_workers" -lt 1 ]] && eta_workers=1
+    eta_s=$((avg * queued / eta_workers))
     eta_str="$((eta_s/3600))h$(( (eta_s%3600)/60 ))m"
   fi
 
@@ -56,12 +64,6 @@ for line in sys.stdin:
 print(json.dumps(d))
 " 2>/dev/null || echo "{}")
   fi
-
-  # active workers
-  active_workers=0
-  for pidf in /tmp/openclaw/multi_extract_pids/worker_*.pid; do
-    [[ -f "$pidf" ]] && kill -0 "$(cat "$pidf")" 2>/dev/null && active_workers=$((active_workers + 1))
-  done
 
   status="running"
   [[ "$queued" -eq 0 && ( "$processed" -gt 0 || "$active_workers" -eq 0 ) ]] && status="completed"

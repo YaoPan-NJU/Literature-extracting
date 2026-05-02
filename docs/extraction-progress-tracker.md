@@ -6,8 +6,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档更新时间 | 2026-05-02T10:16:07+08:00 |
-| manifest 生成时间 | 2026-05-02T10:16:07 |
+| 文档更新时间 | 2026-05-02T10:31:56+08:00 |
+| manifest 生成时间 | 2026-05-02T10:31:54 |
 | 文献库总量 | 4841 |
 | 已提参 | 86 |
 | 剩余 | 4756 |
@@ -20,8 +20,8 @@
 | 统一成功清单 | `outputs/extractions/manifests/success.tsv` |
 | 统一剩余队列 | `outputs/extractions/manifests/remaining_queue.tsv` |
 | 统计摘要 | `outputs/extractions/manifests/progress.json` |
-| 运行时英文批量输出 | `outputs/en_literature_multi/`，启动新批次时自动创建 |
 | 统一输出根目录 | `outputs/extractions/` |
+| 批次运行目录 | `/tmp/openclaw/litextract_runs/<run_id>/`，保存 raw、logs、prompts 和本批 manifest |
 
 ## 分类进度
 
@@ -46,26 +46,26 @@
 
 | 时间 | 分类 | 模型 | 文献 |
 | --- | --- | --- | --- |
-| 2026-05-02T10:16:07 | 英文文献 | mimo/mimo-v2.5-pro | A-multi-objective-optimisation-model-to-reduce-greenhouse_2021_Journal-of-Cl.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | mimo/mimo-v2.5-pro | A-multi-taxonomic-framework-for-assessing-relative-petro_2021_Science-of-The.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-multivariate-study-of-backpulsing-for-membrane_2021_Journal-of-Environment.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-negotiation-support-system-for-resolving-an-interna_2014_Environmental-Mod.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-new-actuator-disc-model-for-oscillatory-and-steady-flow-that-_2024_Ocean-E.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-new-approach-for-assessing-the-radioecological-risk-associ_2025_Marine-Pol.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | mimo/mimo-v2.5-pro | A-new-approach-in-the-optimal-site-selection-of-landfills-for-dr_2021_Chemos.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | mimo/mimo-v2.5-pro | A-new-imperative-for-improving-management-of-large-_2002_Ocean---Coastal-Man.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | mimo/mimo-v2.5-pro | A-new-spatial-estimation-model-and-source-apportionment-of_2023_Science-of-T.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | mimo/mimo-v2.5-pro | A-new-stage-in-China-s-marine-management_1993_Ocean---Coastal-Management.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | mimo/mimo-v2.5-pro | A-new-stochastic-oil-spill-risk-assessment-model-for-Pers_2019_Marine-Pollut.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | mimo/mimo-v2.5-pro | A-non-contacting-leak-fault-diagnosis-method-for-subsea-Christ_2023_Ocean-En.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-novel-approach-to-rating-SMEs--environmental-performan_2023_Ecological-Ind.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-novel-bioprospecting-strategy-via-13C-based-high-throug_2024_Science-of-Th.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-pH-responsive-phosphoprotein-washing-fluid-for-the-removal-of-p_2023_Chemo.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-parametric-analysis-of-the-influence-of-the-internal-slug-f_2019_Ocean-Eng.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-particle-finite-element-model-to-simulate-pipe-soil-interacti_2025_Ocean-E.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-people-first-approach-to-achieving-global-climate-and-nature_2025_One-Eart.pdf |
-| 2026-05-02T10:16:07 | 英文文献 | unknown | A-perspective-on-oil-spills--What-we-should-have-lear_2021_Ocean---Coastal-M.pdf |
-| 2026-05-02T10:16:07 | 书本/中文 | unified | haishang_oilfield_env_handbook.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | mimo/mimo-v2.5-pro | A-multi-objective-optimisation-model-to-reduce-greenhouse_2021_Journal-of-Cl.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | mimo/mimo-v2.5-pro | A-multi-taxonomic-framework-for-assessing-relative-petro_2021_Science-of-The.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-multivariate-study-of-backpulsing-for-membrane_2021_Journal-of-Environment.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-negotiation-support-system-for-resolving-an-interna_2014_Environmental-Mod.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-new-actuator-disc-model-for-oscillatory-and-steady-flow-that-_2024_Ocean-E.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-new-approach-for-assessing-the-radioecological-risk-associ_2025_Marine-Pol.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | mimo/mimo-v2.5-pro | A-new-approach-in-the-optimal-site-selection-of-landfills-for-dr_2021_Chemos.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | mimo/mimo-v2.5-pro | A-new-imperative-for-improving-management-of-large-_2002_Ocean---Coastal-Man.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | mimo/mimo-v2.5-pro | A-new-spatial-estimation-model-and-source-apportionment-of_2023_Science-of-T.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | mimo/mimo-v2.5-pro | A-new-stage-in-China-s-marine-management_1993_Ocean---Coastal-Management.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | mimo/mimo-v2.5-pro | A-new-stochastic-oil-spill-risk-assessment-model-for-Pers_2019_Marine-Pollut.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | mimo/mimo-v2.5-pro | A-non-contacting-leak-fault-diagnosis-method-for-subsea-Christ_2023_Ocean-En.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-novel-approach-to-rating-SMEs--environmental-performan_2023_Ecological-Ind.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-novel-bioprospecting-strategy-via-13C-based-high-throug_2024_Science-of-Th.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-pH-responsive-phosphoprotein-washing-fluid-for-the-removal-of-p_2023_Chemo.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-parametric-analysis-of-the-influence-of-the-internal-slug-f_2019_Ocean-Eng.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-particle-finite-element-model-to-simulate-pipe-soil-interacti_2025_Ocean-E.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-people-first-approach-to-achieving-global-climate-and-nature_2025_One-Eart.pdf |
+| 2026-05-02T10:31:53 | 英文文献 | unknown | A-perspective-on-oil-spills--What-we-should-have-lear_2021_Ocean---Coastal-M.pdf |
+| 2026-05-02T10:31:53 | 书本/中文 | unified | haishang_oilfield_env_handbook.pdf |
 
 ## 下一批候选
 
@@ -135,6 +135,8 @@
 ## 注意事项
 
 - `success.tsv` 和 `remaining_queue.tsv` 是避免遗漏、重复的主依据。
-- `scripts/multi_worker_extract.sh` 会跳过本批输出目录和 `outputs/extractions/` 中已存在的有效 JSON。
+- `scripts/multi_worker_extract.sh` 默认只跑 dashscope 和 mimo 两路，避免 bailian 配额不足时反复失败。
+- 确认百炼 Coding Plan 配额可用后，再加 `--include-bailian` 启用第三路。
+- `scripts/multi_worker_extract.sh` 会跳过 `outputs/extractions/` 中已存在的有效 JSON。
 - `outputs/extractions/` 是长期保留目录；批次运行目录可在合并后清理。
-- 三路并发必须使用独立 `--session-id`，当前 `scripts/multi_worker_extract.sh` 已按 worker 和批次号隔离。
+- 多 worker 并发必须使用独立 `--session-id`，当前脚本已按 worker 和批次号隔离。

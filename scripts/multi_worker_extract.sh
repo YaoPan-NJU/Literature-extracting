@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Multi-worker concurrent PDF extraction for JJJ Literature.
-# Runs 3 parallel workers, each using a different API/model.
+# Runs two workers by default, with optional bailian as the third worker.
 # Uses Python queue_helper.py for cross-platform atomic locking (macOS compatible).
 
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROMPT_FILE="$REPO_DIR/prompts/jjj_single_agent_extraction_prompt.md"
-DEFAULT_OUT_DIR="$REPO_DIR/outputs/litextract_multi"
+DEFAULT_OUT_DIR="$REPO_DIR/outputs/extractions"
 PID_DIR="/tmp/openclaw/multi_extract_pids"
 QH="$REPO_DIR/scripts/queue_helper.py"
 
@@ -15,17 +15,8 @@ NOTIFY_PHONE="+8615895848729"
 LAST_NOTIFY_FILE="/tmp/openclaw/multi_extract_last_notify"
 NOTIFY_COOLDOWN=300
 
-MODELS=(
-  "dashscope/qwen3.6-plus"
-  "bailian/qwen3.6-plus"
-  "mimo/mimo-v2.5-pro"
-)
-MODEL_LABELS=(
-  "dashscope-qwen36"
-  "bailian-qwen36"
-  "mimo-v25pro"
-)
 RUN_ID="${MULTI_EXTRACT_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
+RUN_DIR="${MULTI_EXTRACT_RUN_DIR:-/tmp/openclaw/litextract_runs/$RUN_ID}"
 QUEUE_FILE="${MULTI_EXTRACT_QUEUE_FILE:-/tmp/openclaw/multi_extract_queue_${RUN_ID}.txt}"
 
 # ── helpers ─────────────────────────────────────────────────────────
@@ -60,11 +51,11 @@ unified_json_path() {
   base="$(basename "$pdf")"
   stem="${base%.[Pp][Dd][Ff]}"
   case "$pdf" in
-    *"/英文文献/"*) echo "$REPO_DIR/outputs/extractions/英文文献/json/$stem.json" ;;
-    *"/中文文献/"*) echo "$REPO_DIR/outputs/extractions/中文文献/json/$stem.json" ;;
-    *"/专利/"*) echo "$REPO_DIR/outputs/extractions/专利/json/$stem.json" ;;
-    *"/书本/中文/"*) echo "$REPO_DIR/outputs/extractions/书本/中文/json/$stem.json" ;;
-    *"/书本/英文/"*) echo "$REPO_DIR/outputs/extractions/书本/英文/json/$stem.json" ;;
+    *"/英文文献/"*) echo "$OUT_DIR/英文文献/json/$stem.json" ;;
+    *"/中文文献/"*) echo "$OUT_DIR/中文文献/json/$stem.json" ;;
+    *"/专利/"*) echo "$OUT_DIR/专利/json/$stem.json" ;;
+    *"/书本/中文/"*) echo "$OUT_DIR/书本/中文/json/$stem.json" ;;
+    *"/书本/英文/"*) echo "$OUT_DIR/书本/英文/json/$stem.json" ;;
     *) echo "" ;;
   esac
 }
@@ -108,13 +99,16 @@ PY
 # ── args ────────────────────────────────────────────────────────────
 PDF_DIR=""; OUT_DIR="$DEFAULT_OUT_DIR"; LIMIT=0
 TIMEOUT_SECONDS=1800; SLEEP_SECONDS=2; FORCE=0; DRY_RUN=0
+INCLUDE_BAILIAN=0
 
 usage() {
   cat <<'USAGE'
 Usage: scripts/multi_worker_extract.sh --pdf-dir <DIR> [options]
   --out-dir DIR    --limit N    --timeout-seconds N    --sleep-seconds N
+  --include-bailian
   --force    --dry-run    -h/--help
-Three workers: dashscope/qwen3.6-plus, bailian/qwen3.6-plus, mimo/mimo-v2.5-pro
+Default workers: dashscope/qwen3.6-plus, mimo/mimo-v2.5-pro
+Use --include-bailian only after confirming Coding Plan quota is available.
 USAGE
 }
 
@@ -125,6 +119,7 @@ while [[ $# -gt 0 ]]; do
     --limit)           LIMIT="${2:-0}"; shift 2 ;;
     --timeout-seconds) TIMEOUT_SECONDS="${2:-1800}"; shift 2 ;;
     --sleep-seconds)   SLEEP_SECONDS="${2:-2}"; shift 2 ;;
+    --include-bailian) INCLUDE_BAILIAN=1; shift ;;
     --force)           FORCE=1; shift ;;
     --dry-run)         DRY_RUN=1; shift ;;
     -h|--help)         usage; exit 0 ;;
@@ -136,20 +131,44 @@ done
 [[ -f "$REPO_DIR/.env" ]] && load_dotenv "$REPO_DIR/.env"
 export OPENCLAW_CONFIG_PATH="$REPO_DIR/openclaw.json"
 
+MODELS=(
+  "dashscope/qwen3.6-plus"
+  "mimo/mimo-v2.5-pro"
+)
+MODEL_LABELS=(
+  "dashscope-qwen36"
+  "mimo-v25pro"
+)
+if [[ "$INCLUDE_BAILIAN" -eq 1 ]]; then
+  MODELS=(
+    "dashscope/qwen3.6-plus"
+    "bailian/qwen3.6-plus"
+    "mimo/mimo-v2.5-pro"
+  )
+  MODEL_LABELS=(
+    "dashscope-qwen36"
+    "bailian-qwen36"
+    "mimo-v25pro"
+  )
+fi
+
 # ── dirs ────────────────────────────────────────────────────────────
-JSON_DIR="$OUT_DIR/json"
-RAW_DIR="$OUT_DIR/raw"
-LOG_DIR="$OUT_DIR/logs"
-PROMPT_DIR="$OUT_DIR/prompts"
-SUCCESS_TSV="$OUT_DIR/manifests/success.tsv"
-FAILURES_TSV="$OUT_DIR/manifests/failures.tsv"
-PDF_LIST="$OUT_DIR/manifests/pdf_list.txt"
+RUN_JSON_DIR="$RUN_DIR/json"
+RAW_DIR="$RUN_DIR/raw"
+LOG_DIR="$RUN_DIR/logs"
+PROMPT_DIR="$RUN_DIR/prompts"
+SUCCESS_TSV="$RUN_DIR/manifests/success.tsv"
+FAILURES_TSV="$RUN_DIR/manifests/failures.tsv"
+PDF_LIST="$RUN_DIR/manifests/pdf_list.txt"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   mkdir -p /tmp/openclaw
   PDF_LIST="/tmp/openclaw/multi_extract_${RUN_ID}_pdf_list.txt"
 else
-  mkdir -p "$JSON_DIR" "$RAW_DIR" "$LOG_DIR" "$PROMPT_DIR" "$OUT_DIR/manifests" "$PID_DIR"
+  for cat in "英文文献" "中文文献" "专利" "书本/中文" "书本/英文"; do
+    mkdir -p "$OUT_DIR/$cat/json"
+  done
+  mkdir -p "$RUN_JSON_DIR" "$RAW_DIR" "$LOG_DIR" "$PROMPT_DIR" "$RUN_DIR/manifests" "$PID_DIR"
 
   # ── init manifests ────────────────────────────────────────────────
   if [[ ! -f "$SUCCESS_TSV" ]]; then
@@ -182,7 +201,7 @@ scanned_count=0
 while IFS= read -r pdf; do
   scanned_count=$((scanned_count + 1))
   rid="$(hash_path "$pdf")"
-  jf="$JSON_DIR/$rid.json"
+  jf="$RUN_JSON_DIR/$rid.json"
   unified_jf="$(unified_json_path "$pdf")"
   if [[ "$FORCE" -eq 0 ]] && is_valid_extraction_json "$jf"; then
     skipped_existing=$((skipped_existing + 1))
@@ -205,6 +224,7 @@ TOTAL_ALL="$(wc -l < "$PDF_LIST" | tr -d ' ')"
 echo "=== Multi-Worker Extraction ==="
 echo "PDF dir:      $PDF_DIR"
 echo "Output:       $OUT_DIR"
+echo "Run dir:      $RUN_DIR"
 echo "Run ID:       $RUN_ID"
 echo "Total PDFs:   $TOTAL_ALL"
 echo "Scanned:      $scanned_count"
@@ -289,7 +309,6 @@ worker() {
     [[ -z "$pdf" ]] && break
 
     local record_id; record_id="$(hash_path "$pdf")"
-    local json_path="$JSON_DIR/$record_id.json"
     local raw_path="$RAW_DIR/$record_id.raw.txt"
     local log_path="$LOG_DIR/$record_id.log"
     local prompt_path="$PROMPT_DIR/$record_id.prompt.txt"
@@ -297,12 +316,12 @@ worker() {
 
     local unified_json_path_for_pdf
     unified_json_path_for_pdf="$(unified_json_path "$pdf")"
+    local json_path="$unified_json_path_for_pdf"
+    [[ -z "$json_path" ]] && json_path="$RUN_JSON_DIR/$record_id.json"
+    mkdir -p "$(dirname "$json_path")"
+
     if [[ "$FORCE" -eq 0 ]] && is_valid_extraction_json "$json_path"; then
       echo "[worker $worker_id] skip: $basename_pdf" | tee -a "$worker_log"
-      skipped=$((skipped+1)); continue
-    fi
-    if [[ "$FORCE" -eq 0 && -n "$unified_json_path_for_pdf" ]] && is_valid_extraction_json "$unified_json_path_for_pdf"; then
-      echo "[worker $worker_id] skip unified: $basename_pdf" | tee -a "$worker_log"
       skipped=$((skipped+1)); continue
     fi
 
@@ -372,6 +391,13 @@ failure_count=$(( $(wc -l < "$FAILURES_TSV" | tr -d ' ') - 1 ))
 
 echo ""; echo "=== Complete ==="
 echo "Success: $success_count  Failed: $failure_count"
+
+if python3 "$REPO_DIR/scripts/merge_results.py" >> "$RUN_DIR/merge.log" 2>&1 && \
+   python3 "$REPO_DIR/scripts/update_extraction_progress_doc.py" >> "$RUN_DIR/merge.log" 2>&1; then
+  echo "Unified manifests updated: $OUT_DIR/manifests"
+else
+  echo "WARN: failed to refresh unified manifests; check $RUN_DIR/merge.log" >&2
+fi
 
 notify_imsg "✅ 提参批次完成
 成功: $success_count
