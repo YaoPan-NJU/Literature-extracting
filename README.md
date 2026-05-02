@@ -12,7 +12,7 @@
 | **向量库条目生成** | 提取时同步生成中文摘要条目，可直接用于 embedding 和 RAG 检索 |
 | **证据定位** | 每个提取值标注来源页码和表格/图号，质量分 reliable / needs_review / suspicious |
 | **批量处理** | 支持整个文件夹批量提取，断点续跑，失败清单，日志追踪 |
-| **多 worker 并发提参** | 默认 dashscope + mimo 双路共享队列；确认百炼配额后可加 `--include-bailian` 启用三路 |
+| **多 worker 并发提参** | 启动前用 `--workers 1|2|3` 选择 mimo 单路、bailian+mimo 双路或 dashscope+bailian+mimo 三路 |
 | **进度记录** | 统一维护成功清单、剩余队列和进度入口文档，适合每批几十篇的持续推进 |
 
 ## ⚡ 性能参考
@@ -200,15 +200,15 @@ outputs/pilot_20/
 
 同一输出目录重跑时，已有有效 JSON 的 PDF 会自动跳过（断点续跑）。用 `--force` 强制重跑。
 
-### 场景 4：默认双路、可选三路并发批量提参
+### 场景 4：可选 1/2/3 路并发批量提参
 
-当前推荐用 `scripts/multi_worker_extract.sh` 或封装脚本 `scripts/launch_multi_extract.sh` 跑每批几十篇。默认两个 worker 共享同一个队列，分别使用独立模型和独立 session；百炼 Coding Plan 配额确认可用后，再手动启用第三路。
+当前推荐用 `scripts/multi_worker_extract.sh` 或封装脚本 `scripts/launch_multi_extract.sh` 跑每批几十篇。启动前用 `--workers 1|2|3` 选择并发路数，每个 worker 共享同一个队列，但使用独立模型和独立 session。
 
-| Worker | 模型 | 密钥变量 |
-|--------|------|----------|
-| 1 | `dashscope/qwen3.6-plus` | `DASHSCOPE_API_KEY` |
-| 2 | `mimo/mimo-v2.5-pro` | `MIMO_API_KEY` |
-| 可选 | `bailian/qwen3.6-plus` | `BAILIAN_CODING_PLAN_API_KEY` |
+| 参数 | 模型组合 | 密钥变量 |
+|------|----------|----------|
+| `--workers 1` | `mimo/mimo-v2.5-pro` | `MIMO_API_KEY` |
+| `--workers 2` | `bailian/qwen3.6-plus` + `mimo/mimo-v2.5-pro` | `BAILIAN_CODING_PLAN_API_KEY` + `MIMO_API_KEY` |
+| `--workers 3` | `dashscope/qwen3.6-plus` + `bailian/qwen3.6-plus` + `mimo/mimo-v2.5-pro` | `DASHSCOPE_API_KEY` + `BAILIAN_CODING_PLAN_API_KEY` + `MIMO_API_KEY` |
 
 直接 dry run：
 
@@ -216,6 +216,7 @@ outputs/pilot_20/
 bash scripts/multi_worker_extract.sh \
   --pdf-dir "workspace/近海油气田污染物相关文献/英文文献" \
   --out-dir "outputs/extractions" \
+  --workers 1 \
   --limit 30 \
   --dry-run
 ```
@@ -223,13 +224,14 @@ bash scripts/multi_worker_extract.sh \
 正式启动：
 
 ```bash
-bash scripts/launch_multi_extract.sh --limit 30
+bash scripts/launch_multi_extract.sh --workers 1 --limit 30
 ```
 
-确认百炼配额可用后启用三路：
+双路或三路：
 
 ```bash
-bash scripts/launch_multi_extract.sh --limit 30 --include-bailian
+bash scripts/launch_multi_extract.sh --workers 2 --limit 30
+bash scripts/launch_multi_extract.sh --workers 3 --limit 30
 ```
 
 停止当前提参：

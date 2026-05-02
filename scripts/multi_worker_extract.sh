@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Multi-worker concurrent PDF extraction for JJJ Literature.
-# Runs two workers by default, with optional bailian as the third worker.
+# Selects 1/2/3 workers explicitly before each run.
 # Uses Python queue_helper.py for cross-platform atomic locking (macOS compatible).
 
 set -u
@@ -99,16 +99,19 @@ PY
 # ── args ────────────────────────────────────────────────────────────
 PDF_DIR=""; OUT_DIR="$DEFAULT_OUT_DIR"; LIMIT=0
 TIMEOUT_SECONDS=1800; SLEEP_SECONDS=2; FORCE=0; DRY_RUN=0
-INCLUDE_BAILIAN=0
+WORKERS=1
 
 usage() {
   cat <<'USAGE'
 Usage: scripts/multi_worker_extract.sh --pdf-dir <DIR> [options]
   --out-dir DIR    --limit N    --timeout-seconds N    --sleep-seconds N
-  --include-bailian
+  --workers 1|2|3
+  --include-bailian    Legacy alias for --workers 3.
   --force    --dry-run    -h/--help
-Default workers: dashscope/qwen3.6-plus, mimo/mimo-v2.5-pro
-Use --include-bailian only after confirming Coding Plan quota is available.
+Worker mapping:
+  1 = mimo/mimo-v2.5-pro
+  2 = bailian/qwen3.6-plus + mimo/mimo-v2.5-pro
+  3 = dashscope/qwen3.6-plus + bailian/qwen3.6-plus + mimo/mimo-v2.5-pro
 USAGE
 }
 
@@ -119,7 +122,8 @@ while [[ $# -gt 0 ]]; do
     --limit)           LIMIT="${2:-0}"; shift 2 ;;
     --timeout-seconds) TIMEOUT_SECONDS="${2:-1800}"; shift 2 ;;
     --sleep-seconds)   SLEEP_SECONDS="${2:-2}"; shift 2 ;;
-    --include-bailian) INCLUDE_BAILIAN=1; shift ;;
+    --workers)         WORKERS="${2:-1}"; shift 2 ;;
+    --include-bailian) WORKERS=3; shift ;;
     --force)           FORCE=1; shift ;;
     --dry-run)         DRY_RUN=1; shift ;;
     -h|--help)         usage; exit 0 ;;
@@ -131,26 +135,24 @@ done
 [[ -f "$REPO_DIR/.env" ]] && load_dotenv "$REPO_DIR/.env"
 export OPENCLAW_CONFIG_PATH="$REPO_DIR/openclaw.json"
 
-MODELS=(
-  "dashscope/qwen3.6-plus"
-  "mimo/mimo-v2.5-pro"
-)
-MODEL_LABELS=(
-  "dashscope-qwen36"
-  "mimo-v25pro"
-)
-if [[ "$INCLUDE_BAILIAN" -eq 1 ]]; then
-  MODELS=(
-    "dashscope/qwen3.6-plus"
-    "bailian/qwen3.6-plus"
-    "mimo/mimo-v2.5-pro"
-  )
-  MODEL_LABELS=(
-    "dashscope-qwen36"
-    "bailian-qwen36"
-    "mimo-v25pro"
-  )
-fi
+case "$WORKERS" in
+  1)
+    MODELS=("mimo/mimo-v2.5-pro")
+    MODEL_LABELS=("mimo-v25pro")
+    ;;
+  2)
+    MODELS=("bailian/qwen3.6-plus" "mimo/mimo-v2.5-pro")
+    MODEL_LABELS=("bailian-qwen36" "mimo-v25pro")
+    ;;
+  3)
+    MODELS=("dashscope/qwen3.6-plus" "bailian/qwen3.6-plus" "mimo/mimo-v2.5-pro")
+    MODEL_LABELS=("dashscope-qwen36" "bailian-qwen36" "mimo-v25pro")
+    ;;
+  *)
+    echo "ERROR: --workers must be 1, 2, or 3" >&2
+    exit 2
+    ;;
+esac
 
 # ── dirs ────────────────────────────────────────────────────────────
 RUN_JSON_DIR="$RUN_DIR/json"

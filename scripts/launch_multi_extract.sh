@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Launch multi-worker extraction.
-# Usage: bash scripts/launch_multi_extract.sh [--limit N] [--dry-run] [--include-bailian]
+# Usage: bash scripts/launch_multi_extract.sh [--limit N] [--dry-run] [--workers 1|2|3]
 
 set -u
 
@@ -9,16 +9,22 @@ PID_DIR="/tmp/openclaw/multi_extract_pids"
 
 LIMIT=0
 DRY_RUN=0
-INCLUDE_BAILIAN=0
+WORKERS=1
 EXTRA_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --limit)   LIMIT="${2:-0}"; EXTRA_ARGS+=("--limit" "$LIMIT"); shift 2 ;;
     --dry-run) DRY_RUN=1; EXTRA_ARGS+=("--dry-run"); shift ;;
-    --include-bailian) INCLUDE_BAILIAN=1; EXTRA_ARGS+=("--include-bailian"); shift ;;
+    --workers) WORKERS="${2:-1}"; EXTRA_ARGS+=("--workers" "$WORKERS"); shift 2 ;;
+    --include-bailian) WORKERS=3; EXTRA_ARGS+=("--workers" "3"); shift ;;
     *)         EXTRA_ARGS+=("$1"); shift ;;
   esac
 done
+
+case "$WORKERS" in
+  1|2|3) ;;
+  *) echo "ERROR: --workers must be 1, 2, or 3" >&2; exit 2 ;;
+esac
 
 RUN_ID="$(date +%Y%m%d%H%M%S)-$$"
 QUEUE_FILE="/tmp/openclaw/multi_extract_queue_${RUN_ID}.txt"
@@ -46,13 +52,12 @@ EFFECTIVE=$TOTAL
 [[ "$LIMIT" -gt 0 ]] && EFFECTIVE=$LIMIT
 
 echo "=== Multi-Worker Extraction Launcher ==="
-if [[ "$INCLUDE_BAILIAN" -eq 1 ]]; then
-  WORKER_COUNT=3
-  echo "Workers: 3 (dashscope-qwen36, bailian-qwen36, mimo-v25pro)"
-else
-  WORKER_COUNT=2
-  echo "Workers: 2 (dashscope-qwen36, mimo-v25pro)"
-fi
+WORKER_COUNT="$WORKERS"
+case "$WORKERS" in
+  1) echo "Workers: 1 (mimo-v25pro)" ;;
+  2) echo "Workers: 2 (bailian-qwen36, mimo-v25pro)" ;;
+  3) echo "Workers: 3 (dashscope-qwen36, bailian-qwen36, mimo-v25pro)" ;;
+esac
 echo "Run ID: $RUN_ID"
 echo "Total PDFs: $TOTAL  (limit: ${LIMIT:-none})"
 echo "Run dir: $RUN_DIR"
