@@ -204,6 +204,8 @@ outputs/pilot_20/
 
 当前推荐用 `scripts/multi_worker_extract.sh` 或封装脚本 `scripts/launch_multi_extract.sh` 跑每批几十篇。启动前用 `--workers 1|2|3` 选择并发路数，每个 worker 共享同一个队列，但使用独立模型和独立 session。
 
+英文批量提参默认读取 `workspace/en_pdfs/` hardlink 目录。不要直接把 symlink 目录 `workspace/近海油气田污染物相关文献/英文文献` 交给 OpenClaw，否则 PDF 真实路径会被解析到 workspace 外而被媒体白名单拒绝。`launch_multi_extract.sh` 会按本次任务规模自动补足 `workspace/en_pdfs/` 中的 hardlink。
+
 | 参数 | 模型组合 | 密钥变量 |
 |------|----------|----------|
 | `--workers 1` | `mimo/mimo-v2.5-pro` | `MIMO_API_KEY` |
@@ -214,7 +216,7 @@ outputs/pilot_20/
 
 ```bash
 bash scripts/multi_worker_extract.sh \
-  --pdf-dir "workspace/近海油气田污染物相关文献/英文文献" \
+  --pdf-dir "workspace/en_pdfs" \
   --out-dir "outputs/extractions" \
   --workers 1 \
   --limit 30 \
@@ -234,6 +236,13 @@ bash scripts/launch_multi_extract.sh --workers 2 --limit 30
 bash scripts/launch_multi_extract.sh --workers 3 --limit 30
 ```
 
+如果要严格控制每路处理数量，用 `--per-worker-limit`：
+
+```bash
+# 三路各处理 99 篇，总计 297 篇
+bash scripts/launch_multi_extract.sh --workers 3 --per-worker-limit 99
+```
+
 停止当前提参：
 
 ```bash
@@ -247,6 +256,7 @@ bash scripts/stop_extraction.sh
 - 队列操作通过 `scripts/queue_helper.py` 的 Python `fcntl.flock` 实现，兼容 macOS。
 - JSON 直接写入 `outputs/extractions/<分类>/json/`；raw、logs、prompts 和本批 manifest 写入 `/tmp/openclaw/litextract_runs/<run_id>/`。
 - 脚本会跳过 `outputs/extractions/` 中已存在的有效 JSON，减少重复提参。
+- `scripts/prepare_en_pdf_hardlinks.py` 会按统一剩余队列把下一批英文 PDF hardlink 到 `workspace/en_pdfs/`，避免 symlink 路径越界。
 
 ### 场景 5：持续批次进度记录
 

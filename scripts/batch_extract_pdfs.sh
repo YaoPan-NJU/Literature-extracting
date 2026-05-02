@@ -344,7 +344,66 @@ def try_parse(t):
     return None
 
 
+def reconstruct_from_parts(t):
+    """Fallback: extract each top-level component via regex and rebuild."""
+    s = t.find('{')
+    if s < 0: return None
+    c = t[s:]
+    sm = re.search(r'"schema_version"\s*:\s*"([^"]*)"', c)
+    pm = re.search(r'"paper_id"\s*:\s*"([^"]*)"', c)
+    if not sm or not pm: return None
+    def extract_obj(key):
+        pos = c.find(f'"{key}"')
+        if pos < 0: return None
+        ob = c.find('{', pos)
+        if ob < 0: return None
+        d = 0
+        for j in range(ob, len(c)):
+            if c[j] == '{': d += 1
+            elif c[j] == '}':
+                d -= 1
+                if d == 0:
+                    try: return json.loads(c[ob:j+1])
+                    except: return None
+        return None
+    def extract_arr(key):
+        pos = c.find(f'"{key}"')
+        if pos < 0: return []
+        lb = c.find('[', pos)
+        if lb < 0: return []
+        items = []
+        for m in re.finditer(r'\{', c[lb:]):
+            d = 0
+            s2 = lb + m.start()
+            for j in range(s2, len(c)):
+                if c[j] == '{': d += 1
+                elif c[j] == '}':
+                    d -= 1
+                    if d == 0:
+                        try: items.append(json.loads(c[s2:j+1]))
+                        except: pass
+                        break
+        return items
+    result = {
+        "schema_version": sm.group(1),
+        "paper_id": pm.group(1),
+        "bibliographic_metadata": extract_obj("bibliographic_metadata") or {},
+        "routing": extract_obj("routing") or {},
+        "decision_summary": extract_obj("decision_summary") or {},
+        "knowledge_items": extract_arr("knowledge_items"),
+        "vector_index_records": extract_arr("vector_index_records"),
+        "quality_control": extract_obj("quality_control") or {},
+        "processing_notes": [],
+    }
+    if not result["knowledge_items"]: return None
+    return result
+
+
 obj = try_parse(text)
+if obj is None:
+    obj = reconstruct_from_parts(text)
+    if obj is not None:
+        print(f"reconstructed from parts: {len(obj.get('knowledge_items',[]))} ki", file=sys.stderr)
 
 if obj is None:
     print("No valid JSON object found in raw output.", file=sys.stderr)

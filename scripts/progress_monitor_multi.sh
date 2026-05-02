@@ -6,6 +6,9 @@ set -u
 
 PROGRESS_FILE="/tmp/openclaw/extraction_progress.json"
 INTERVAL=30
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-$REPO_DIR/.venv/bin/python}"
+[[ -x "$PYTHON_BIN" ]] || PYTHON_BIN="python3"
 
 if [[ $# -lt 2 ]]; then
   echo "Usage: $0 <RUN_DIR> <TOTAL_PDFS> [QUEUE_FILE]" >&2
@@ -54,7 +57,7 @@ while true; do
   model_stats=""
   if [[ -f "$SUCCESS_TSV" ]]; then
     model_stats=$(tail -n +2 "$SUCCESS_TSV" | cut -f4 | sort | uniq -c | sort -rn | \
-      python3 -c "
+      "$PYTHON_BIN" -c "
 import sys, json
 d = {}
 for line in sys.stdin:
@@ -64,11 +67,12 @@ for line in sys.stdin:
 print(json.dumps(d))
 " 2>/dev/null || echo "{}")
   fi
+  [[ -n "$model_stats" ]] || model_stats="{}"
 
   status="running"
   [[ "$queued" -eq 0 && ( "$processed" -gt 0 || "$active_workers" -eq 0 ) ]] && status="completed"
 
-  python3 -c "
+  "$PYTHON_BIN" -c "
 import json
 progress = {
     'status': '$status',

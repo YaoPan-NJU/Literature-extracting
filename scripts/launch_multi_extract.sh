@@ -1,19 +1,28 @@
 #!/usr/bin/env bash
 # Launch multi-worker extraction.
-# Usage: bash scripts/launch_multi_extract.sh [--limit N] [--dry-run] [--workers 1|2|3]
+# Usage: bash scripts/launch_multi_extract.sh [--limit N] [--dry-run] [--workers 1|2|3] [--mode multimodal|text-only] [--preprocess-workers N]
 
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_DIR="/tmp/openclaw/multi_extract_pids"
+PDF_DIR="$REPO_DIR/workspace/en_pdfs"
+PYTHON_BIN="${PYTHON_BIN:-$REPO_DIR/.venv/bin/python}"
+[[ -x "$PYTHON_BIN" ]] || PYTHON_BIN="python3"
 
 LIMIT=0
 DRY_RUN=0
 WORKERS=1
+PER_WORKER_LIMIT=0
+MODE="multimodal"
+PREPROCESS_WORKERS=4
 EXTRA_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --limit)   LIMIT="${2:-0}"; EXTRA_ARGS+=("--limit" "$LIMIT"); shift 2 ;;
+    --per-worker-limit) PER_WORKER_LIMIT="${2:-0}"; EXTRA_ARGS+=("--per-worker-limit" "$PER_WORKER_LIMIT"); shift 2 ;;
+    --mode)    MODE="${2:-multimodal}"; EXTRA_ARGS+=("--mode" "$MODE"); shift 2 ;;
+    --preprocess-workers) PREPROCESS_WORKERS="${2:-4}"; EXTRA_ARGS+=("--preprocess-workers" "$PREPROCESS_WORKERS"); shift 2 ;;
     --dry-run) DRY_RUN=1; EXTRA_ARGS+=("--dry-run"); shift ;;
     --workers) WORKERS="${2:-1}"; EXTRA_ARGS+=("--workers" "$WORKERS"); shift 2 ;;
     --include-bailian) WORKERS=3; EXTRA_ARGS+=("--workers" "3"); shift ;;
@@ -25,6 +34,31 @@ case "$WORKERS" in
   1|2|3) ;;
   *) echo "ERROR: --workers must be 1, 2, or 3" >&2; exit 2 ;;
 esac
+case "$PER_WORKER_LIMIT" in
+  ''|*[!0-9]*) echo "ERROR: --per-worker-limit must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$PREPROCESS_WORKERS" in
+  ''|*[!0-9]*) echo "ERROR: --preprocess-workers must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$MODE" in
+  multimodal|text-only) ;;
+  *) echo "ERROR: --mode must be multimodal or text-only" >&2; exit 2 ;;
+esac
+if [[ "$MODE" == "multimodal" && "$PREPROCESS_WORKERS" -lt 1 ]]; then
+  echo "ERROR: --preprocess-workers must be at least 1 in multimodal mode" >&2
+  exit 2
+fi
+
+REQUESTED=0
+if [[ "$PER_WORKER_LIMIT" -gt 0 ]]; then
+  REQUESTED=$((PER_WORKER_LIMIT * WORKERS))
+elif [[ "$LIMIT" -gt 0 ]]; then
+  REQUESTED="$LIMIT"
+fi
+
+if [[ "$DRY_RUN" -eq 0 && "$REQUESTED" -gt 0 ]]; then
+  "$PYTHON_BIN" "$REPO_DIR/scripts/prepare_en_pdf_hardlinks.py" --count "$REQUESTED"
+fi
 
 RUN_ID="$(date +%Y%m%d%H%M%S)-$$"
 QUEUE_FILE="/tmp/openclaw/multi_extract_queue_${RUN_ID}.txt"
@@ -35,7 +69,7 @@ export MULTI_EXTRACT_RUN_DIR="$RUN_DIR"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   bash "$REPO_DIR/scripts/multi_worker_extract.sh" \
-    --pdf-dir "$REPO_DIR/workspace/近海油气田污染物相关文献/英文文献" \
+    --pdf-dir "$PDF_DIR" \
     --out-dir "$REPO_DIR/outputs/extractions" \
     "${EXTRA_ARGS[@]}"
   exit $?
@@ -47,9 +81,13 @@ rm -rf "$PID_DIR"
 mkdir -p "$PID_DIR" /tmp/openclaw
 
 # count PDFs
-TOTAL=$(find "$REPO_DIR/workspace/近海油气田污染物相关文献/英文文献" -name "*.pdf" -type f | wc -l | tr -d ' ')
+TOTAL=$(find "$PDF_DIR" -name "*.pdf" -type f | wc -l | tr -d ' ')
 EFFECTIVE=$TOTAL
-[[ "$LIMIT" -gt 0 ]] && EFFECTIVE=$LIMIT
+if [[ "$PER_WORKER_LIMIT" -gt 0 ]]; then
+  EFFECTIVE=$REQUESTED
+elif [[ "$LIMIT" -gt 0 ]]; then
+  EFFECTIVE=$LIMIT
+fi
 
 echo "=== Multi-Worker Extraction Launcher ==="
 WORKER_COUNT="$WORKERS"
@@ -60,11 +98,13 @@ case "$WORKERS" in
 esac
 echo "Run ID: $RUN_ID"
 echo "Total PDFs: $TOTAL  (limit: ${LIMIT:-none})"
+echo "Mode: $MODE"
+[[ "$MODE" == "multimodal" ]] && echo "Preprocess workers: $PREPROCESS_WORKERS"
 echo "Run dir: $RUN_DIR"
 echo ""
 
 # init progress
-python3 -c "
+"$PYTHON_BIN" -c "
 import json
 p = {'status':'starting','total':$EFFECTIVE,'queued':$EFFECTIVE,'processed':0,'success':0,'failed':0,'elapsed':'0h0m','eta':'calculating...','active_workers':$WORKER_COUNT,'per_model':{},'updated_at':'$(date '+%Y-%m-%d %H:%M:%S')'}
 with open('/tmp/openclaw/extraction_progress.json','w') as f: json.dump(p,f,indent=2)
@@ -72,7 +112,7 @@ with open('/tmp/openclaw/extraction_progress.json','w') as f: json.dump(p,f,inde
 
 # start extraction in background
 nohup bash "$REPO_DIR/scripts/multi_worker_extract.sh" \
-  --pdf-dir "$REPO_DIR/workspace/近海油气田污染物相关文献/英文文献" \
+  --pdf-dir "$PDF_DIR" \
   --out-dir "$REPO_DIR/outputs/extractions" \
   "${EXTRA_ARGS[@]}" \
   > /tmp/openclaw/multi_extract_launch.log 2>&1 &

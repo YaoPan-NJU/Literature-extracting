@@ -4,7 +4,6 @@ description: 文本锚定+视觉增强+硬校验混合提参：PyMuPDF文本层�
 metadata:
   openclaw:
     emoji: "📑"
-    always: true
 ---
 
 # 文献数据提参技能（Literature Data Extraction）

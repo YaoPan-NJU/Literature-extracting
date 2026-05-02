@@ -207,8 +207,8 @@ def main() -> None:
 
     api_key = (
         args.api_key
-        or os.environ.get("BAILIAN_CODING_PLAN_API_KEY")
         or os.environ.get("DASHSCOPE_API_KEY")
+        or os.environ.get("BAILIAN_CODING_PLAN_API_KEY")
     )
     if not api_key:
         print("ERROR: Set BAILIAN_CODING_PLAN_API_KEY or DASHSCOPE_API_KEY, or use --api-key")

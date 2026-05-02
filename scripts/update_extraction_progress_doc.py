@@ -175,6 +175,8 @@ def main() -> None:
 - `success.tsv` 和 `remaining_queue.tsv` 是避免遗漏、重复的主依据。
 - 启动新任务前用 `--workers 1|2|3` 选择并发路数。
 - `--workers 1` 只用 mimo；`--workers 2` 用 bailian + mimo；`--workers 3` 用 dashscope + bailian + mimo。
+- 需要每路固定篇数时，用 `--per-worker-limit N`，例如三路各 99 篇：`bash scripts/launch_multi_extract.sh --workers 3 --per-worker-limit 99`。
+- 英文批量提参默认读取 `workspace/en_pdfs/` hardlink 目录；不要直接用 symlink 目录喂给 OpenClaw。
 - `scripts/multi_worker_extract.sh` 会跳过 `outputs/extractions/` 中已存在的有效 JSON。
 - `outputs/extractions/` 是长期保留目录；批次运行目录可在合并后清理。
 - 多 worker 并发必须使用独立 `--session-id`，当前脚本已按 worker 和批次号隔离。

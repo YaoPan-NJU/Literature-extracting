@@ -10,6 +10,8 @@ PROMPT_FILE="$REPO_DIR/prompts/jjj_single_agent_extraction_prompt.md"
 DEFAULT_OUT_DIR="$REPO_DIR/outputs/extractions"
 PID_DIR="/tmp/openclaw/multi_extract_pids"
 QH="$REPO_DIR/scripts/queue_helper.py"
+PYTHON_BIN="${PYTHON_BIN:-$REPO_DIR/.venv/bin/python}"
+[[ -x "$PYTHON_BIN" ]] || PYTHON_BIN="python3"
 
 NOTIFY_PHONE="+8615895848729"
 LAST_NOTIFY_FILE="/tmp/openclaw/multi_extract_last_notify"
@@ -32,18 +34,18 @@ load_dotenv() {
 }
 
 timestamp() {
-  python3 -c "from datetime import datetime,timezone; print(datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds'))"
+  "$PYTHON_BIN" -c "from datetime import datetime,timezone; print(datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds'))"
 }
 
 hash_path() {
   printf '%s' "$1" | shasum -a 1 2>/dev/null | awk '{print $1}' || \
-  python3 -c "import hashlib,sys; print(hashlib.sha1(sys.argv[1].encode()).hexdigest())" "$1"
+  "$PYTHON_BIN" -c "import hashlib,sys; print(hashlib.sha1(sys.argv[1].encode()).hexdigest())" "$1"
 }
 
 is_valid_extraction_json() {
   local json_file="$1"
   [[ -s "$json_file" ]] && \
-    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'schema_version' in d or 'knowledge_items' in d" "$json_file" 2>/dev/null
+    "$PYTHON_BIN" -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'schema_version' in d or 'knowledge_items' in d" "$json_file" 2>/dev/null
 }
 
 unified_json_path() {
@@ -52,6 +54,7 @@ unified_json_path() {
   stem="${base%.[Pp][Dd][Ff]}"
   case "$pdf" in
     *"/英文文献/"*) echo "$OUT_DIR/英文文献/json/$stem.json" ;;
+    *"/en_pdfs/"*) echo "$OUT_DIR/英文文献/json/$stem.json" ;;
     *"/中文文献/"*) echo "$OUT_DIR/中文文献/json/$stem.json" ;;
     *"/专利/"*) echo "$OUT_DIR/专利/json/$stem.json" ;;
     *"/书本/中文/"*) echo "$OUT_DIR/书本/中文/json/$stem.json" ;;
@@ -84,7 +87,7 @@ notify_failure() {
 # macOS-compatible timeout wrapper
 run_with_timeout() {
   local timeout_seconds="$1"; shift
-  python3 - "$timeout_seconds" "$@" <<'PY'
+  "$PYTHON_BIN" - "$timeout_seconds" "$@" <<'PY'
 import subprocess, sys
 timeout_seconds = int(sys.argv[1])
 cmd = sys.argv[2:]
@@ -99,12 +102,16 @@ PY
 # ── args ────────────────────────────────────────────────────────────
 PDF_DIR=""; OUT_DIR="$DEFAULT_OUT_DIR"; LIMIT=0
 TIMEOUT_SECONDS=1800; SLEEP_SECONDS=2; FORCE=0; DRY_RUN=0
-WORKERS=1
+WORKERS=1; PER_WORKER_LIMIT=0; MODE="multimodal"
+PREPROCESS_WORKERS=4
 
 usage() {
   cat <<'USAGE'
 Usage: scripts/multi_worker_extract.sh --pdf-dir <DIR> [options]
   --out-dir DIR    --limit N    --timeout-seconds N    --sleep-seconds N
+  --per-worker-limit N
+  --mode multimodal|text-only
+  --preprocess-workers N
   --workers 1|2|3
   --include-bailian    Legacy alias for --workers 3.
   --force    --dry-run    -h/--help
@@ -120,8 +127,11 @@ while [[ $# -gt 0 ]]; do
     --pdf-dir)         PDF_DIR="${2:-}"; shift 2 ;;
     --out-dir)         OUT_DIR="${2:-}"; shift 2 ;;
     --limit)           LIMIT="${2:-0}"; shift 2 ;;
+    --per-worker-limit) PER_WORKER_LIMIT="${2:-0}"; shift 2 ;;
     --timeout-seconds) TIMEOUT_SECONDS="${2:-1800}"; shift 2 ;;
     --sleep-seconds)   SLEEP_SECONDS="${2:-2}"; shift 2 ;;
+    --mode)            MODE="${2:-multimodal}"; shift 2 ;;
+    --preprocess-workers) PREPROCESS_WORKERS="${2:-4}"; shift 2 ;;
     --workers)         WORKERS="${2:-1}"; shift 2 ;;
     --include-bailian) WORKERS=3; shift ;;
     --force)           FORCE=1; shift ;;
@@ -153,12 +163,32 @@ case "$WORKERS" in
     exit 2
     ;;
 esac
+case "$PER_WORKER_LIMIT" in
+  ''|*[!0-9]*) echo "ERROR: --per-worker-limit must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$PREPROCESS_WORKERS" in
+  ''|*[!0-9]*) echo "ERROR: --preprocess-workers must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$MODE" in
+  multimodal|text-only) ;;
+  *) echo "ERROR: --mode must be multimodal or text-only" >&2; exit 2 ;;
+esac
+if [[ "$MODE" == "multimodal" && "$PREPROCESS_WORKERS" -lt 1 ]]; then
+  echo "ERROR: --preprocess-workers must be at least 1 in multimodal mode" >&2
+  exit 2
+fi
+
+QUEUE_LIMIT="$LIMIT"
+if [[ "$PER_WORKER_LIMIT" -gt 0 ]]; then
+  QUEUE_LIMIT=$((PER_WORKER_LIMIT * ${#MODELS[@]}))
+fi
 
 # ── dirs ────────────────────────────────────────────────────────────
 RUN_JSON_DIR="$RUN_DIR/json"
 RAW_DIR="$RUN_DIR/raw"
 LOG_DIR="$RUN_DIR/logs"
 PROMPT_DIR="$RUN_DIR/prompts"
+TEXT_DIR="$RUN_DIR/text"
 SUCCESS_TSV="$RUN_DIR/manifests/success.tsv"
 FAILURES_TSV="$RUN_DIR/manifests/failures.tsv"
 PDF_LIST="$RUN_DIR/manifests/pdf_list.txt"
@@ -170,7 +200,7 @@ else
   for cat in "英文文献" "中文文献" "专利" "书本/中文" "书本/英文"; do
     mkdir -p "$OUT_DIR/$cat/json"
   done
-  mkdir -p "$RUN_JSON_DIR" "$RAW_DIR" "$LOG_DIR" "$PROMPT_DIR" "$RUN_DIR/manifests" "$PID_DIR"
+  mkdir -p "$RUN_JSON_DIR" "$RAW_DIR" "$LOG_DIR" "$PROMPT_DIR" "$TEXT_DIR" "$RUN_DIR/manifests" "$PID_DIR"
 
   # ── init manifests ────────────────────────────────────────────────
   if [[ ! -f "$SUCCESS_TSV" ]]; then
@@ -185,7 +215,7 @@ fi
 
 # ── build queue ─────────────────────────────────────────────────────
 : > "$QUEUE_FILE"
-python3 - "$PDF_DIR" > "$PDF_LIST" <<'PY'
+"$PYTHON_BIN" - "$PDF_DIR" > "$PDF_LIST" <<'PY'
 import os, sys
 root = sys.argv[1]
 paths = []
@@ -215,7 +245,7 @@ while IFS= read -r pdf; do
   fi
   echo "$pdf" >> "$QUEUE_FILE"
   queued_count=$((queued_count + 1))
-  if [[ "$LIMIT" -gt 0 && "$queued_count" -ge "$LIMIT" ]]; then
+  if [[ "$QUEUE_LIMIT" -gt 0 && "$queued_count" -ge "$QUEUE_LIMIT" ]]; then
     break
   fi
 done < "$PDF_LIST"
@@ -232,6 +262,9 @@ echo "Total PDFs:   $TOTAL_ALL"
 echo "Scanned:      $scanned_count"
 echo "Queued:       $TOTAL_QUEUED (skipped $skipped_existing existing)"
 echo "Workers:      ${#MODELS[@]} (${MODEL_LABELS[*]})"
+echo "Mode:         $MODE"
+[[ "$MODE" == "multimodal" ]] && echo "Preprocess:   $PREPROCESS_WORKERS visual workers"
+[[ "$PER_WORKER_LIMIT" -gt 0 ]] && echo "Per worker:   $PER_WORKER_LIMIT PDFs"
 echo "Timeout:      ${TIMEOUT_SECONDS}s per PDF"
 echo ""
 
@@ -242,7 +275,7 @@ fi
 
 # ── JSON extraction ─────────────────────────────────────────────────
 extract_first_json() {
-  python3 - "$1" "$2" <<'PYEOF'
+  "$PYTHON_BIN" - "$1" "$2" <<'PYEOF'
 import json, re, sys
 raw_path, json_path = sys.argv[1], sys.argv[2]
 with open(raw_path, "r", encoding="utf-8") as f:
@@ -288,12 +321,184 @@ def try_parse(t):
                     except json.JSONDecodeError: break
     return None
 
+def reconstruct_from_parts(t):
+    """Fallback: extract each top-level component via regex and rebuild."""
+    s = t.find('{')
+    if s < 0: return None
+    c = t[s:]
+    sm = re.search(r'"schema_version"\s*:\s*"([^"]*)"', c)
+    pm = re.search(r'"paper_id"\s*:\s*"([^"]*)"', c)
+    if not sm or not pm: return None
+
+    def extract_obj(key):
+        pos = c.find(f'"{key}"')
+        if pos < 0: return None
+        ob = c.find('{', pos)
+        if ob < 0: return None
+        d = 0
+        for j in range(ob, len(c)):
+            if c[j] == '{': d += 1
+            elif c[j] == '}':
+                d -= 1
+                if d == 0:
+                    try: return json.loads(c[ob:j+1])
+                    except: return None
+        return None
+
+    def extract_arr(key):
+        pos = c.find(f'"{key}"')
+        if pos < 0: return []
+        lb = c.find('[', pos)
+        if lb < 0: return []
+        items = []
+        for m in re.finditer(r'\{', c[lb:]):
+            d = 0
+            s2 = lb + m.start()
+            for j in range(s2, len(c)):
+                if c[j] == '{': d += 1
+                elif c[j] == '}':
+                    d -= 1
+                    if d == 0:
+                        try: items.append(json.loads(c[s2:j+1]))
+                        except: pass
+                        break
+        return items
+
+    result = {
+        "schema_version": sm.group(1),
+        "paper_id": pm.group(1),
+        "bibliographic_metadata": extract_obj("bibliographic_metadata") or {},
+        "routing": extract_obj("routing") or {},
+        "decision_summary": extract_obj("decision_summary") or {},
+        "knowledge_items": extract_arr("knowledge_items"),
+        "vector_index_records": extract_arr("vector_index_records"),
+        "quality_control": extract_obj("quality_control") or {},
+        "processing_notes": [],
+    }
+    if not result["knowledge_items"]: return None
+    return result
+
 obj = try_parse(text)
+if obj is None:
+    obj = reconstruct_from_parts(text)
+    if obj is not None:
+        print(f"reconstructed from parts: {len(obj.get('knowledge_items',[]))} ki", file=sys.stderr)
 if obj is None:
     print("No valid JSON found", file=sys.stderr); sys.exit(1)
 with open(json_path, "w", encoding="utf-8") as f:
     json.dump(obj, f, ensure_ascii=False, indent=2); f.write("\n")
 print(f"ok chars={len(json.dumps(obj))}")
+PYEOF
+}
+
+extract_pdf_text() {
+  "$PYTHON_BIN" - "$1" "$2" <<'PYEOF'
+from pathlib import Path
+import sys
+
+import fitz
+
+pdf_path = Path(sys.argv[1])
+text_path = Path(sys.argv[2])
+doc = fitz.open(pdf_path)
+char_count = 0
+
+with text_path.open("w", encoding="utf-8") as out:
+    out.write(f"PDF file: {pdf_path.name}\n")
+    out.write(f"Total pages: {doc.page_count}\n\n")
+    for page_no, page in enumerate(doc, 1):
+        text = page.get_text("text") or ""
+        char_count += len(text.strip())
+        out.write(f"\n[Page {page_no}]\n")
+        out.write(text)
+        out.write("\n")
+
+if char_count < 100:
+    print(f"too little text extracted: {char_count} chars", file=sys.stderr)
+    sys.exit(1)
+print(f"ok pages={doc.page_count} chars={char_count}")
+PYEOF
+}
+
+visual_cache_path() {
+  "$PYTHON_BIN" - "$1" <<'PYEOF'
+from pathlib import Path
+import sys
+
+p = Path(sys.argv[1])
+print(p.with_name(p.stem + "_visual_cache.json"))
+PYEOF
+}
+
+is_valid_visual_cache() {
+  "$PYTHON_BIN" - "$1" <<'PYEOF'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as f:
+        cache = json.load(f)
+    stage0 = cache["stage0"]
+    visual = cache.get("visual_markdown", {})
+    data_pages = [str(p) for p in stage0.get("data_page_nums", [])]
+    missing = [p for p in data_pages if p not in visual]
+    if missing:
+        raise ValueError(f"missing visual pages: {missing[:5]}")
+except Exception as exc:
+    print(exc, file=sys.stderr)
+    sys.exit(1)
+PYEOF
+}
+
+compose_multimodal_context() {
+  "$PYTHON_BIN" - "$1" "$2" "$3" <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+pdf_path = Path(sys.argv[1])
+cache_path = Path(sys.argv[2])
+out_path = Path(sys.argv[3])
+
+with cache_path.open("r", encoding="utf-8") as f:
+    cache = json.load(f)
+
+stage0 = cache["stage0"]
+visual = {str(k): v for k, v in cache.get("visual_markdown", {}).items()}
+page_types = {int(p["page"]): p.get("type", "text_page") for p in stage0.get("page_types", [])}
+pages_text = {int(p["page"]): p.get("text", "") for p in stage0.get("pages_text", [])}
+total_pages = int(stage0.get("total_pages") or len(pages_text))
+
+with out_path.open("w", encoding="utf-8") as out:
+    out.write("PDF file: " + str(pdf_path) + "\n")
+    out.write("Multimodal source: local text anchors + visual page cache\n\n")
+    out.write("## Hard metadata anchors\n")
+    out.write(f"- Title: {stage0.get('anchor_title') or ''}\n")
+    out.write(f"- DOI: {stage0.get('anchor_doi') or ''}\n")
+    keywords = stage0.get("anchor_keywords") or []
+    out.write("- Keywords: " + ", ".join(str(k) for k in keywords) + "\n")
+    out.write(f"- Total pages: {total_pages}\n")
+    out.write("- Data pages read visually: " + ", ".join(str(p) for p in stage0.get("data_page_nums", [])) + "\n\n")
+    out.write("## Page content\n")
+
+    for page_no in range(1, total_pages + 1):
+        page_type = page_types.get(page_no, "text_page")
+        if page_type == "skip_page":
+            continue
+        if page_type == "data_page" and str(page_no) in visual:
+            out.write(f"\n[Page {page_no} - visual]\n")
+            out.write(visual[str(page_no)].strip())
+            out.write("\n")
+        else:
+            text = pages_text.get(page_no, "").strip()
+            if not text:
+                continue
+            label = "text"
+            if page_type == "data_page":
+                label = "text fallback; visual cache missing"
+            out.write(f"\n[Page {page_no} - {label}]\n")
+            out.write(text)
+            out.write("\n")
 PYEOF
 }
 
@@ -306,14 +511,19 @@ worker() {
   echo "[worker $worker_id] started  model=$model" | tee "$worker_log"
 
   while true; do
+    if [[ "$PER_WORKER_LIMIT" -gt 0 && "$processed" -ge "$PER_WORKER_LIMIT" ]]; then
+      break
+    fi
+
     local pdf
-    pdf="$(python3 "$QH" pop "$QUEUE_FILE")"
+    pdf="$("$PYTHON_BIN" "$QH" pop "$QUEUE_FILE")"
     [[ -z "$pdf" ]] && break
 
     local record_id; record_id="$(hash_path "$pdf")"
     local raw_path="$RAW_DIR/$record_id.raw.txt"
     local log_path="$LOG_DIR/$record_id.log"
     local prompt_path="$PROMPT_DIR/$record_id.prompt.txt"
+    local text_path="$TEXT_DIR/$record_id.txt"
     local basename_pdf; basename_pdf="$(basename "$pdf")"
 
     local unified_json_path_for_pdf
@@ -330,11 +540,74 @@ worker() {
     processed=$((processed+1))
     echo "[worker $worker_id] [$processed] $basename_pdf  ($label)" | tee -a "$worker_log"
 
-    {
-      echo "请读取并提取以下 PDF："; echo "$pdf"; echo
-      echo "请严格遵循下面的项目提示词。最终只输出一个 JSON 对象。"; echo
-      cat "$PROMPT_FILE"
-    } > "$prompt_path"
+    if [[ "$MODE" == "text-only" ]]; then
+      if ! extract_pdf_text "$pdf" "$text_path" >> "$log_path" 2>&1; then
+        "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
+          "$(timestamp)" "$pdf" "$record_id" "$model" "pdf_text_extract" "1" "local_text_extract_failed" "$log_path"
+        echo "[worker $worker_id]   FAIL text_extract" | tee -a "$worker_log"
+        notify_failure "$worker_id" "$label" "$basename_pdf" "本地PDF文本抽取失败"
+        continue
+      fi
+
+      {
+        echo "你不需要也不要调用 PDF 工具；以下已经是从 PDF 本地抽取出的文本。"
+        echo "请只依据这份文本提取结构化 JSON。"
+        echo "PDF路径：$pdf"
+        echo
+        echo "----- PDF_TEXT_BEGIN -----"
+        cat "$text_path"
+        echo "----- PDF_TEXT_END -----"
+        echo
+        echo "【重要约束】不要使用任何工具，不要写文件，不要创建文件。你必须直接在回复中输出完整 JSON 字符串。回复以 { 开头，以 } 结尾。"
+        echo
+        echo "请严格遵循下面的项目提示词。最终只输出一个 JSON 对象。"; echo
+        cat "$PROMPT_FILE"
+        echo
+        echo "【再次提醒】不要使用工具写文件。直接输出 JSON，不要用代码块包裹。"
+      } > "$prompt_path"
+    else
+      local cache_path
+      cache_path="$(visual_cache_path "$pdf")"
+      if [[ "$FORCE" -eq 1 || ! -s "$cache_path" ]] || ! is_valid_visual_cache "$cache_path" >> "$log_path" 2>&1; then
+        echo "[worker $worker_id]   preprocess visual cache" | tee -a "$worker_log"
+        if ! "$PYTHON_BIN" "$REPO_DIR/scripts/preprocess.py" "$pdf" \
+            --max-workers "$PREPROCESS_WORKERS" \
+            -o "$cache_path" >> "$log_path" 2>&1; then
+          "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
+            "$(timestamp)" "$pdf" "$record_id" "$model" "preprocess" "1" "visual_preprocess_failed" "$log_path"
+          echo "[worker $worker_id]   FAIL preprocess" | tee -a "$worker_log"
+          notify_failure "$worker_id" "$label" "$basename_pdf" "视觉预处理失败"
+          continue
+        fi
+      fi
+
+      if ! compose_multimodal_context "$pdf" "$cache_path" "$text_path" >> "$log_path" 2>&1; then
+        "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
+          "$(timestamp)" "$pdf" "$record_id" "$model" "compose_context" "1" "multimodal_context_failed" "$log_path"
+        echo "[worker $worker_id]   FAIL compose_context" | tee -a "$worker_log"
+        notify_failure "$worker_id" "$label" "$basename_pdf" "多模态上下文合并失败"
+        continue
+      fi
+
+      {
+        echo "以下内容来自同一篇 PDF 的多模态预处理结果：文本页来自本地 PDF 文本层，数据页/图表页来自视觉模型读取后的 Markdown 缓存。"
+        echo "请不要重新调用 PDF 工具；请依据下面的多模态合并上下文提取结构化 JSON。"
+        echo "$pdf"
+        echo
+        echo "----- MULTIMODAL_CONTEXT_BEGIN -----"
+        cat "$text_path"
+        echo "----- MULTIMODAL_CONTEXT_END -----"
+        echo
+        echo "图表、表格、公式、流程图、化学结构式和页面布局中包含的信息已经在 [Page N - visual] 段落中转写；这些信息必须纳入判断。"
+        echo
+        echo "【重要约束】不要使用任何工具，不要写文件，不要创建文件。你必须直接在回复中输出完整 JSON 字符串。回复以 { 开头，以 } 结尾。"
+        echo
+        echo "请严格遵循下面的项目提示词。最终只输出一个 JSON 对象。"; echo
+        cat "$PROMPT_FILE"
+        echo
+        echo "【再次提醒】不要使用工具写文件。直接输出 JSON，不要用代码块包裹。"
+      } > "$prompt_path"
+    fi
 
     local start_ts end_ts elapsed_s
     start_ts="$(date +%s)"
@@ -347,14 +620,14 @@ worker() {
           --message "$(cat "$prompt_path")" \
           > "$raw_path" 2>> "$log_path"); then
       if extract_first_json "$raw_path" "$json_path" >> "$log_path" 2>&1 && \
-         python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$json_path" 2>/dev/null; then
+         "$PYTHON_BIN" -c "import json,sys; json.load(open(sys.argv[1]))" "$json_path" 2>/dev/null; then
         end_ts="$(date +%s)"; elapsed_s=$((end_ts-start_ts))
-        python3 "$QH" append "$SUCCESS_TSV" \
+        "$PYTHON_BIN" "$QH" append "$SUCCESS_TSV" \
           "$(timestamp)" "$pdf" "$record_id" "$model" "$json_path" "$raw_path" "$elapsed_s"
         echo "[worker $worker_id]   OK ${elapsed_s}s" | tee -a "$worker_log"
       else
         end_ts="$(date +%s)"; elapsed_s=$((end_ts-start_ts))
-        python3 "$QH" append "$FAILURES_TSV" \
+        "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
           "$(timestamp)" "$pdf" "$record_id" "$model" "json_extract" "1" "no_valid_json" "$log_path"
         echo "[worker $worker_id]   FAIL json ${elapsed_s}s" | tee -a "$worker_log"
         notify_failure "$worker_id" "$label" "$basename_pdf" "JSON提取失败"
@@ -362,7 +635,7 @@ worker() {
     else
       local exit_code=$?
       end_ts="$(date +%s)"; elapsed_s=$((end_ts-start_ts))
-      python3 "$QH" append "$FAILURES_TSV" \
+      "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
         "$(timestamp)" "$pdf" "$record_id" "$model" "openclaw_agent" "$exit_code" "timeout_or_error" "$log_path"
       echo "[worker $worker_id]   FAIL exit=$exit_code ${elapsed_s}s" | tee -a "$worker_log"
       notify_failure "$worker_id" "$label" "$basename_pdf" "openclaw超时或错误(exit=$exit_code)"
@@ -394,8 +667,8 @@ failure_count=$(( $(wc -l < "$FAILURES_TSV" | tr -d ' ') - 1 ))
 echo ""; echo "=== Complete ==="
 echo "Success: $success_count  Failed: $failure_count"
 
-if python3 "$REPO_DIR/scripts/merge_results.py" >> "$RUN_DIR/merge.log" 2>&1 && \
-   python3 "$REPO_DIR/scripts/update_extraction_progress_doc.py" >> "$RUN_DIR/merge.log" 2>&1; then
+if "$PYTHON_BIN" "$REPO_DIR/scripts/merge_results.py" >> "$RUN_DIR/merge.log" 2>&1 && \
+   "$PYTHON_BIN" "$REPO_DIR/scripts/update_extraction_progress_doc.py" >> "$RUN_DIR/merge.log" 2>&1; then
   echo "Unified manifests updated: $OUT_DIR/manifests"
 else
   echo "WARN: failed to refresh unified manifests; check $RUN_DIR/merge.log" >&2
@@ -406,7 +679,7 @@ notify_imsg "✅ 提参批次完成
 失败: $failure_count
 结果: $OUT_DIR"
 
-python3 -c "
+"$PYTHON_BIN" -c "
 import json
 p = {'status':'completed','processed':$((success_count+failure_count)),'success':$success_count,'failed':$failure_count,'remaining':0,'updated_at':'$(date '+%Y-%m-%d %H:%M:%S')'}
 with open('/tmp/openclaw/extraction_progress.json','w') as f: json.dump(p,f,indent=2)
