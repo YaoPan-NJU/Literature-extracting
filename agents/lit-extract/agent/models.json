@@ -1,5 +1,22 @@
 {
   "providers": {
+    "dashscope": {
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "apiKey": "${DASHSCOPE_API_KEY}",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qwen3.6-plus",
+          "name": "qwen3.6-plus",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 16384
+        }
+      ]
+    },
     "bailian": {
       "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
       "apiKey": "${BAILIAN_CODING_PLAN_API_KEY}",
@@ -9,7 +26,9 @@
           "id": "qwen3.6-plus",
           "name": "qwen3.6-plus",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 1000000,
           "maxTokens": 16384
         },
@@ -17,7 +36,9 @@
           "id": "qwen3.5-27b",
           "name": "qwen3.5-27b",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 131072,
           "maxTokens": 16384
         }
@@ -32,7 +53,9 @@
           "id": "mimo-v2.5-pro",
           "name": "mimo-v2.5-pro",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 1000000,
           "maxTokens": 16384
         }

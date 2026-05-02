@@ -264,76 +264,100 @@ extract_first_json() {
   local json_path="$2"
   python3 - "$raw_path" "$json_path" <<'PY'
 import json
+import re
 import sys
 
 raw_path, json_path = sys.argv[1], sys.argv[2]
 text = open(raw_path, "r", encoding="utf-8", errors="replace").read()
-decoder = json.JSONDecoder()
+text = re.sub(r"```json\s*", "", text)
+text = re.sub(r"```\s*", "", text)
+text = text.strip()
 
 
-def fix_unescaped_quotes(text):
-    """Fix unescaped double quotes inside JSON string values (common LLM output issue)."""
-    result = []
-    in_string = False
-    escaped = False
-    for i, c in enumerate(text):
-        if escaped:
-            result.append(c)
-            escaped = False
+def fix_quotes(t):
+    out, in_s, i = [], False, 0
+    while i < len(t):
+        c = t[i]
+        if not in_s:
+            out.append(c)
+            if c == '"':
+                in_s = True
+            i += 1
             continue
-        if c == '\\' and in_string:
-            result.append(c)
-            escaped = True
+        if c == '\\' and i + 1 < len(t):
+            out.append(c)
+            out.append(t[i + 1])
+            i += 2
             continue
         if c == '"':
-            if not in_string:
-                in_string = True
-                result.append(c)
+            rest = t[i + 1:].lstrip()
+            if rest and rest[0] in ',:]} \n\r\t':
+                out.append(c)
+                in_s = False
             else:
-                j = i + 1
-                while j < len(text) and text[j] in ' \t\n\r':
-                    j += 1
-                if j < len(text) and text[j] in ',}]:':
-                    in_string = False
-                    result.append(c)
-                else:
-                    result.append('\\"')
+                out.append('\\"')
+            i += 1
             continue
-        result.append(c)
-    return ''.join(result)
+        if c == '\n':
+            out.append('\\n')
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return ''.join(out)
 
 
-def try_parse(text):
-    """Try to find and parse the first JSON object in text."""
-    for idx, char in enumerate(text):
-        if char != "{":
+def try_parse(t):
+    for txt in [t, fix_quotes(t)]:
+        start = txt.find('{')
+        if start < 0:
             continue
         try:
-            obj, end = decoder.raw_decode(text[idx:])
-            return obj, end
+            return json.loads(txt[start:])
         except json.JSONDecodeError:
-            continue
-    return None, 0
+            pass
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(txt)):
+            c = txt[i]
+            if escape:
+                escape = False
+                continue
+            if c == '\\' and in_string:
+                escape = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(txt[start:i + 1])
+                    except json.JSONDecodeError:
+                        break
+    return None
 
 
-# First attempt: parse as-is
-obj, end = try_parse(text)
-
-# Second attempt: fix unescaped quotes and retry
-if obj is None:
-    fixed = fix_unescaped_quotes(text)
-    obj, end = try_parse(fixed)
-    if obj is not None:
-        print("fixed_unescaped_quotes=true", file=sys.stderr)
+obj = try_parse(text)
 
 if obj is None:
     print("No valid JSON object found in raw output.", file=sys.stderr)
     sys.exit(1)
 
+if "schema_version" not in obj and "knowledge_items" not in obj:
+    print(f"Parsed JSON is not a full extraction schema: {list(obj)[:5]}", file=sys.stderr)
+    sys.exit(1)
+
 with open(json_path, "w", encoding="utf-8") as f:
     json.dump(obj, f, ensure_ascii=False, indent=2)
     f.write("\n")
-print(f"extracted_json_chars={end}")
+print(f"extracted_json_chars={len(json.dumps(obj, ensure_ascii=False))}")
 sys.exit(0)
 PY
 }

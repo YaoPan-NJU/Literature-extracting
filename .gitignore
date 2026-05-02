@@ -16,9 +16,21 @@ update-check.json
 *.last-good
 workspace/.openclaw/
 workspace/pdf_*/
+workspace/*.pdf
+workspace/*.txt
+workspace/*.png
+workspace/*.jpg
+workspace/en_pdfs/
+workspace/book_test_en/
+workspace/提取结果/
+workspace/近海油气田污染物相关文献/
+workspace/近海油气田污染物相关文献
+近海油气田污染物相关文献/
+近海油气田污染物相关文献
 *_visual_cache.json
 outputs/
 Literature/
+monitor_extraction.sh
 
 # Node / npm
 node_modules/
@@ -34,6 +46,7 @@ venv/
 openclaw.json.local
 .env
 *.secret
+agents/**/auth-profiles.json
 
 # OS
 .DS_Store

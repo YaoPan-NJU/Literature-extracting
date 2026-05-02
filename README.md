@@ -12,6 +12,8 @@
 | **向量库条目生成** | 提取时同步生成中文摘要条目，可直接用于 embedding 和 RAG 检索 |
 | **证据定位** | 每个提取值标注来源页码和表格/图号，质量分 reliable / needs_review / suspicious |
 | **批量处理** | 支持整个文件夹批量提取，断点续跑，失败清单，日志追踪 |
+| **三路并发提参** | 支持 dashscope、bailian、mimo 三个 worker 共享队列并发运行，独立 session 隔离 |
+| **进度记录** | 统一维护成功清单、剩余队列和进度入口文档，适合每批几十篇的持续推进 |
 
 ## ⚡ 性能参考
 
@@ -31,8 +33,9 @@
 ### 前置要求
 
 - **Python** >= 3.9（用于 PyMuPDF、pdf2image 和批处理脚本）
-- **阿里百炼 Coding Plan API Key**（用于 Qwen 模型）
-- **小米 Mimo API Key**（用于 Mimo provider；当前配置会在启动前检查）
+- **阿里百炼 Coding Plan API Key**（用于 `bailian/qwen3.6-plus`）
+- **DashScope API Key**（用于 `dashscope/qwen3.6-plus`）
+- **小米 Mimo API Key**（用于 `mimo/mimo-v2.5-pro`）
 - **poppler-utils**（Linux: `sudo apt install poppler-utils`，macOS: `brew install poppler`）
 
 ### 方案 A：已有 OpenClaw（推荐给 Mac mini / iMessage 用户）
@@ -55,6 +58,7 @@ cp .env.example .env
 # 编辑 .env，填入：
 # BAILIAN_CODING_PLAN_API_KEY=...
 # MIMO_API_KEY=...
+# DASHSCOPE_API_KEY=...
 
 bash scripts/setup.sh --existing-openclaw
 ```
@@ -131,7 +135,7 @@ export OPENCLAW_CONFIG_PATH="$PWD/openclaw.json"
 openclaw agents add lit-extract \
   --workspace ./workspace \
   --agent-dir ./agents/lit-extract/agent \
-  --model bailian/qwen3.6-plus \
+  --model mimo/mimo-v2.5-pro \
   --non-interactive
 
 # 如需启动本项目 Gateway
@@ -195,6 +199,78 @@ outputs/pilot_20/
 ```
 
 同一输出目录重跑时，已有有效 JSON 的 PDF 会自动跳过（断点续跑）。用 `--force` 强制重跑。
+
+### 场景 4：三路并发批量提参
+
+当前推荐用 `scripts/multi_worker_extract.sh` 或封装脚本 `scripts/launch_multi_extract.sh` 跑每批几十篇。三个 worker 共享同一个队列，但分别使用独立模型和独立 session：
+
+| Worker | 模型 | 密钥变量 |
+|--------|------|----------|
+| 1 | `dashscope/qwen3.6-plus` | `DASHSCOPE_API_KEY` |
+| 2 | `bailian/qwen3.6-plus` | `BAILIAN_CODING_PLAN_API_KEY` |
+| 3 | `mimo/mimo-v2.5-pro` | `MIMO_API_KEY` |
+
+直接 dry run：
+
+```bash
+bash scripts/multi_worker_extract.sh \
+  --pdf-dir "workspace/近海油气田污染物相关文献/英文文献" \
+  --out-dir "outputs/en_literature_multi" \
+  --limit 30 \
+  --dry-run
+```
+
+正式启动：
+
+```bash
+bash scripts/launch_multi_extract.sh --limit 30
+```
+
+停止当前提参：
+
+```bash
+bash scripts/stop_extraction.sh
+```
+
+设计要点：
+
+- 每个 worker 都显式传入 `--model`，避免实际运行时退回 agent 默认模型。
+- 每个 worker 使用 `multi-${RUN_ID}-w${worker_id}-${label}` 形式的独立 `--session-id`，避免 `SessionWriteLockTimeoutError`。
+- 队列操作通过 `scripts/queue_helper.py` 的 Python `fcntl.flock` 实现，兼容 macOS。
+- 脚本会跳过本批输出目录和 `outputs/extractions/` 中已存在的有效 JSON，减少重复提参。
+
+### 场景 5：持续批次进度记录
+
+每批只跑几十篇时，推荐把 `docs/extraction-progress-tracker.md` 作为下一次开工前的入口文档。它由统一 manifest 自动生成，记录当前总进度、已提文献、下一批候选和权威清单位置。
+
+每批结束后执行：
+
+```bash
+python3 scripts/merge_results.py
+python3 scripts/update_extraction_progress_doc.py
+```
+
+然后下次开始前先阅读：
+
+```bash
+less docs/extraction-progress-tracker.md
+```
+
+权威进度文件：
+
+```
+outputs/extractions/
+├── manifests/
+│   ├── success.tsv           # 统一成功记录
+│   ├── remaining_queue.tsv   # 剩余待提参队列
+│   └── progress.json         # 分类进度统计
+├── 英文文献/json/
+├── 中文文献/json/
+├── 专利/json/
+└── 书本/
+    ├── 中文/json/
+    └── 英文/json/
+```
 
 ## 📊 输出格式（v2）
 
@@ -370,7 +446,19 @@ Literature-extracting/
 │   ├── setup.sh               # 一键部署脚本（支持 --existing-openclaw）
 │   ├── start_gateway_env.sh   # 加载 .env 后启动 Gateway
 │   ├── batch_extract_pdfs.sh  # 批量 PDF 提取（macOS/Linux 兼容）
+│   ├── multi_worker_extract.sh        # 三路并发提参主脚本
+│   ├── launch_multi_extract.sh        # 后台启动三路并发提参
+│   ├── stop_extraction.sh             # 停止当前提参进程
+│   ├── progress_monitor_multi.sh      # 多 worker 进度监控
+│   ├── queue_helper.py                # 共享队列原子操作
+│   ├── merge_results.py               # 合并结果到 outputs/extractions/
+│   ├── update_extraction_progress_doc.py  # 生成进度入口文档
 │   └── preprocess.py          # PDF 文本锚定与视觉预处理
+├── docs/
+│   ├── extraction-progress-tracker.md          # 每批开工前阅读的进度入口
+│   └── 2026-05-02-parallel-extraction-review.md # 并发提参复盘
+├── outputs/
+│   └── extractions/           # 统一提参结果、成功清单、剩余队列和进度统计
 ├── prompts/
 │   └── jjj_single_agent_extraction_prompt.md   # v2 提示词（模型自主提取）
 ├── schema/
