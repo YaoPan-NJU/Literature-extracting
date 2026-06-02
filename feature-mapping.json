@@ -1,6 +1,6 @@
 {
-  "version": "1.0",
-  "description": "生物原型知识库特征-原型映射表。库只做匹配响应，不负责推理。",
+  "version": "2.0",
+  "description": "生物原型知识库特征-原型映射表。库只做匹配响应，不负责推理。v2.0新增constraint_prototype_map支持工程约束→生物原型映射。",
 
   "pollutant_prototype_map": {
     "重金属": {
@@ -572,5 +572,98 @@
     "生物矿化": ["生物矿化模板"],
     "生物沉淀": ["巯基"],
     "催化降解": ["活性氧位点", "催化降解"]
+  },
+
+  "constraint_prototype_map": {
+    "抗菌性": {
+      "description": "抵抗微生物附着和生物膜形成的能力",
+      "adrmats_dimension": "Antimicrobial Property",
+      "prototypes": [
+        {"id": "shark-skin", "weight": 0.95, "narrative_summary": "鲨鱼皮盾鳞微沟槽结构减少细菌接触面积", "soft_constraint": "建议保留微沟槽特征"},
+        {"id": "pitcher-plant-slippery-surface", "weight": 0.95, "narrative_summary": "猪笼草超滑表面使微生物无法附着", "soft_constraint": "可考虑SLIPS涂层方案"},
+        {"id": "lotus-leaf", "weight": 0.80, "narrative_summary": "荷叶超疏水表面减少微生物附着", "soft_constraint": "微纳二级结构可借鉴"}
+      ]
+    },
+    "耐酸性": {
+      "description": "在酸性条件下保持结构稳定性和吸附性能",
+      "adrmats_dimension": "Structural Stability",
+      "prototypes": [
+        {"id": "iron-oxidizing-bacteria", "weight": 0.90, "narrative_summary": "铁氧化细菌在pH 2-8环境下稳定工作", "soft_constraint": "可借鉴铁氧化物的酸稳定性"},
+        {"id": "diatom-frustule", "weight": 0.85, "narrative_summary": "硅藻壳在pH 2-10环境下稳定", "soft_constraint": "二氧化硅骨架耐酸"},
+        {"id": "metal-organic-framework", "weight": 0.80, "narrative_summary": "MOF在pH 1-12环境下稳定", "soft_constraint": "选择耐酸配体"}
+      ]
+    },
+    "耐碱性": {
+      "description": "在碱性条件下保持结构稳定性和吸附性能",
+      "adrmats_dimension": "Structural Stability",
+      "prototypes": [
+        {"id": "metal-organic-framework", "weight": 0.85, "narrative_summary": "MOF在pH 1-12环境下稳定", "soft_constraint": "选择耐碱配体"},
+        {"id": "cellulose-nanocrystal", "weight": 0.80, "narrative_summary": "纤维素在pH 2-12环境下稳定", "soft_constraint": "纤维素骨架耐碱"},
+        {"id": "lotus-leaf", "weight": 0.75, "narrative_summary": "荷叶微纳结构在碱性环境下稳定", "soft_constraint": "结构稳定性好"}
+      ]
+    },
+    "可回收性": {
+      "description": "材料易于从水中分离回收",
+      "adrmats_dimension": "Regenerability",
+      "prototypes": [
+        {"id": "magnetic-bacteria", "weight": 0.95, "narrative_summary": "磁性细菌可通过磁分离回收", "soft_constraint": "建议引入磁性组分"},
+        {"id": "metal-organic-framework", "weight": 0.70, "narrative_summary": "MOF可制成颗粒便于分离", "soft_constraint": "可考虑成型加工"}
+      ]
+    },
+    "低成本": {
+      "description": "材料来源广泛、制备成本低",
+      "adrmats_dimension": "Economic Viability",
+      "prototypes": [
+        {"id": "oyster-shell", "weight": 0.95, "narrative_summary": "牡蛎壳来源丰富、成本极低", "soft_constraint": "废弃贝壳资源化利用"},
+        {"id": "chitosan", "weight": 0.90, "narrative_summary": "壳聚糖来源广泛（虾蟹壳）", "soft_constraint": "天然高分子成本低"},
+        {"id": "plant-tannin", "weight": 0.85, "narrative_summary": "植物单宁来源广泛", "soft_constraint": "可从树皮等废弃物提取"},
+        {"id": "alginate", "weight": 0.80, "narrative_summary": "海藻酸钠从海藻提取", "soft_constraint": "海藻资源丰富"}
+      ]
+    },
+    "高吸附容量": {
+      "description": "对目标污染物具有高吸附容量",
+      "adrmats_dimension": "Adsorption Performance",
+      "prototypes": [
+        {"id": "metal-organic-framework", "weight": 0.95, "narrative_summary": "MOF具有超高比表面积", "soft_constraint": "可优化孔径匹配污染物分子"},
+        {"id": "mussel-foot-adhesion", "weight": 0.85, "narrative_summary": "贻贝足丝蛋白多配位点", "soft_constraint": "邻苯二酚基团密度高"},
+        {"id": "chitosan", "weight": 0.80, "narrative_summary": "壳聚糖多活性位点", "soft_constraint": "氨基密度高"}
+      ]
+    },
+    "快速吸附": {
+      "description": "吸附动力学快，适合连续流处理",
+      "adrmats_dimension": "Adsorption Performance",
+      "prototypes": [
+        {"id": "diatom-frustule", "weight": 0.90, "narrative_summary": "硅藻壳介孔结构传质快", "soft_constraint": "介孔结构利于传质"},
+        {"id": "metal-organic-framework", "weight": 0.85, "narrative_summary": "MOF层次孔结构传质快", "soft_constraint": "大孔提供传质通道"},
+        {"id": "coral-skeleton", "weight": 0.80, "narrative_summary": "珊瑚骨架大孔结构", "soft_constraint": "大孔利于快速传质"}
+      ]
+    },
+    "高选择性": {
+      "description": "对目标污染物有高选择性",
+      "adrmats_dimension": "Adsorption Performance",
+      "prototypes": [
+        {"id": "cell-membrane-ion-channel", "weight": 0.95, "narrative_summary": "细胞膜离子通道精确筛分", "soft_constraint": "可借鉴分子印迹思路"},
+        {"id": "sulfate-reducing-bacteria", "weight": 0.85, "narrative_summary": "SRB对软金属离子高选择性", "soft_constraint": "巯基对Hg/Cd/Pb选择性高"},
+        {"id": "mussel-foot-adhesion", "weight": 0.80, "narrative_summary": "邻苯二酚对特定金属高选择性", "soft_constraint": "可优化配位环境"}
+      ]
+    },
+    "易合成": {
+      "description": "制备方法简单、可规模化",
+      "adrmats_dimension": "Synthesis Feasibility",
+      "prototypes": [
+        {"id": "chitosan", "weight": 0.90, "narrative_summary": "壳聚糖可直接使用或简单改性", "soft_constraint": "天然高分子易获取"},
+        {"id": "alginate", "weight": 0.85, "narrative_summary": "海藻酸钠可直接凝胶化", "soft_constraint": "制备方法简单"},
+        {"id": "polydopamine-coating", "weight": 0.80, "narrative_summary": "PDA涂层一步法制备", "soft_constraint": "在碱性条件下自聚合"}
+      ]
+    },
+    "环境友好": {
+      "description": "材料本身无毒、制备过程绿色",
+      "adrmats_dimension": "Environmental Impact",
+      "prototypes": [
+        {"id": "chitosan", "weight": 0.95, "narrative_summary": "壳聚糖天然无毒可降解", "soft_constraint": "天然高分子环境友好"},
+        {"id": "alginate", "weight": 0.90, "narrative_summary": "海藻酸钠天然无毒", "soft_constraint": "来源天然"},
+        {"id": "cellulose-nanocrystal", "weight": 0.85, "narrative_summary": "纤维素可降解", "soft_constraint": "可再生资源"}
+      ]
+    }
   }
 }
