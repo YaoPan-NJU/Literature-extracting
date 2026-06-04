@@ -1,0 +1,29 @@
+{# extraction/prompts/coarse_extract.j2 #}
+{# Phase 1: Extract structured fields from paper abstract/first page #}
+
+你是一个科学文献分析助手。请从以下论文摘要中提取结构化信息，以JSON格式输出。
+
+论文标题/文件名信息：{{ filename_info }}
+论文摘要/首页文本：
+"""
+{{ abstract_text }}
+"""
+
+请提取以下字段（如果文本中没有相关信息，输出null）：
+
+```json
+{
+  "target_pollutants": ["检测到的目标污染物列表，使用标准化学名称"],
+  "adsorption_mechanisms": ["检测到的吸附机制，使用标准术语：配位螯合/静电吸附/π-π堆积/氢键/离子交换/孔隙吸附/表面吸附/超疏水分离/梯度润湿/分子筛分/生物矿化/生物沉淀/生物富集"],
+  "material_type": "吸附材料类型",
+  "biological_source": "生物来源（如有）",
+  "qmax_value": "最大吸附容量数值(mg/g)或null",
+  "qmax_pollutant": "qmax对应的目标污染物",
+  "removal_rate": "去除率百分比(仅数字)或null",
+  "ph_range": "适用pH范围或null",
+  "temperature_range": "适用温度范围或null",
+  "key_findings": "一句话总结核心发现"
+}
+```
+
+注意事项：只提取文本中明确提及的信息，不要推断或编造。确保输出是合法的JSON格式。

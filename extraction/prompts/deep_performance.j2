@@ -1,0 +1,40 @@
+{# extraction/prompts/deep_performance.j2 #}
+{# Phase 4: Extract detailed performance data from full paper text #}
+
+你是一个科学文献数据分析专家。请从以下论文全文中提取水处理吸附材料的详细性能数据，以JSON格式输出。
+
+论文信息：{{ paper_meta }}
+原型ID：{{ prototype_id }}
+
+论文全文：
+"""
+{{ full_text }}
+"""
+
+请提取以下字段（如果文本中没有相关信息，输出null）：
+
+```json
+{
+  "performance_data": {
+    "qmax": {"value": "数值(mg/g)", "pollutant": "对应污染物", "conditions": "实验条件"},
+    "removal_rate": {"value": "去除率(%)", "pollutant": "对应污染物", "conditions": "实验条件"},
+    "kinetics": {"model": "动力学模型", "rate_constant": "速率常数"},
+    "isotherm": {"model": "等温线模型", "parameters": "关键参数"},
+    "selectivity": "选择性描述或null",
+    "reusability": {"cycles": "可循环次数", "retention_rate": "循环后保持率(%)"}
+  },
+  "applicability": {
+    "ph_range": "适用pH范围", "ph_optimal": "最优pH",
+    "temperature_range": "适用温度范围", "temperature_optimal": "最优温度",
+    "salinity_tolerance": "盐度耐受描述或null", "real_water_tested": true
+  },
+  "material_characterization": {
+    "surface_area": "比表面积(m2/g)或null", "pore_size": "孔径(nm)或null",
+    "functional_groups": ["关键官能团列表"], "morphology": "形貌描述"
+  },
+  "mechanisms_identified": ["论文中明确识别的吸附机制"],
+  "evidence_level": "high/medium/low"
+}
+```
+
+注意事项：只提取文本中明确报告的数据，不要推断。数值必须带单位。

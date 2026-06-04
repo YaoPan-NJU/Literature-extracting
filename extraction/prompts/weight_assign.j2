@@ -1,0 +1,45 @@
+{# extraction/prompts/weight_assign.j2 #}
+{# Phase 4: Assign weights to feature-mapping.json entries #}
+
+你是一个仿生材料设计领域的评审专家。请基于以下证据为仿生原型在feature-mapping中的映射关系赋权重。
+
+原型ID：{{ prototype_id }}
+原型名称：{{ prototype_name }}
+
+## 原型的综合画像
+{{ coarse_profile_json }}
+
+## 相关论文的提取结果
+{{ extraction_results_json }}
+
+## 需要赋权的映射条目
+{{ mapping_entries_json }}
+
+权重赋值原则：
+- 权重范围：0-1，代表"实际匹配程度"
+- 构成：70%推理知识 + 20%文献数据 + 10%证据链强度
+- 评分：0.9-1.0强匹配，0.7-0.9中等，0.5-0.7弱匹配，<0.5不匹配
+
+请输出：
+
+```json
+{
+  "weight_assignments": [
+    {
+      "mapping_type": "pollutant_prototype_map 或 feature_prototype_map",
+      "entry_key": "污染物名或特征名",
+      "weight": 0.85,
+      "reasoning_score": 0.9,
+      "reasoning_justification": "推理知识打分理由",
+      "literature_score": 0.7,
+      "literature_count": 3,
+      "evidence_score": 0.8,
+      "evidence_description": "证据链评价",
+      "mechanism_summary": "机制摘要（更新版）",
+      "design_hint": "设计提示（更新版）"
+    }
+  ]
+}
+```
+
+注意事项：每个映射条目都必须给出权重和完整的打分理由。

@@ -1,0 +1,48 @@
+{# extraction/prompts/biomimetic_narrative.j2 #}
+{# Phase 4: Extract biomimetic design knowledge from supplemented literature #}
+
+你是一个仿生设计分析专家。请从以下论文中提取仿生设计知识，以JSON格式输出。
+
+论文信息：{{ paper_meta }}
+目标原型ID：{{ prototype_id }}
+目标原型名称：{{ prototype_name }}
+
+论文全文：
+"""
+{{ full_text }}
+"""
+
+请按照仿生设计叙事的五个维度提取信息（如果文本中没有相关信息，输出null）：
+
+```json
+{
+  "problem_definition": {
+    "nature_challenge": "该生物原型在自然界中面临的挑战",
+    "water_treatment_mapping": "这个挑战如何映射到水处理领域"
+  },
+  "biological_solution": {
+    "evolutionary_strategy": "生物通过什么进化策略解决这个问题",
+    "key_mechanisms": ["关键机制列表"],
+    "success_cases": "自然界中该策略成功的案例"
+  },
+  "key_feature_extraction": {
+    "must_keep_features": ["必须保留的特征"],
+    "adjustable_features": ["可以调整的特征"],
+    "feature_rationale": "为什么分别归类"
+  },
+  "design_mapping": {
+    "bio_to_material": "从生物特征到材料设计的映射关系",
+    "soft_constraints": ["设计建议"],
+    "design_examples": "具体材料设计案例"
+  },
+  "explainability_anchors": {
+    "one_line_story": "一句话仿生故事",
+    "design_traceability": "设计可追溯性"
+  },
+  "engineering_constraints": [
+    {"constraint_name": "约束名", "relevance": "high/medium/low", "explanation": "关系说明"}
+  ]
+}
+```
+
+注意事项：重点关注"从生物到材料"的设计逻辑链。确保输出是合法的JSON格式。
