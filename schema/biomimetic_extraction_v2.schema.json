@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://biomimetic.local/schema/biomimetic-v2.schema.json",
+  "title": "Biomimetic Literature Extraction Schema v2",
+  "description": "仿生水处理吸附材料文献知识提取 v2 — 新增仿生设计库所需字段",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "paper_id",
+    "bibliographic_metadata",
+    "routing",
+    "decision_summary",
+    "knowledge_items",
+    "vector_index_records",
+    "quality_control",
+    "processing_notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "biomimetic-v2"
+    },
+    "paper_id": {
+      "type": "string",
+      "description": "稳定短 ID，优先 第一作者_年份_关键词"
+    },
+    "bibliographic_metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["title", "authors", "year", "abstract"],
+      "properties": {
+        "title": { "type": ["string", "null"] },
+        "authors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "year": { "type": ["integer", "string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "doi": { "type": ["string", "null"] },
+        "language": { "type": ["string", "null"] },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "abstract": { "type": ["string", "null"] },
+        "file_name": { "type": ["string", "null"] },
+        "book_title": { "type": ["string", "null"] },
+        "chapter_title": { "type": ["string", "null"] },
+        "editors": { "type": ["string", "null"] },
+        "publisher": { "type": ["string", "null"] },
+        "isbn": { "type": ["string", "null"] }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "document_type",
+        "domain_directions",
+        "text_quality"
+      ],
+      "properties": {
+        "document_type": {
+          "enum": [
+            "T1_article",
+            "T2_patent",
+            "T3_standard_guideline",
+            "T4_thesis_book_chapter",
+            "T5_review"
+          ]
+        },
+        "domain_directions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "D1_adsorption_performance",
+              "D2_material_structure",
+              "D3_biological_source",
+              "D4_adsorption_mechanism",
+              "D5_engineering_constraint",
+              "D6_pollutant_application",
+              "D7_synthesis_method",
+              "D8_characterization",
+              "D9_comparison_review",
+              "D10_design_principle"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "text_quality": {
+          "enum": [
+            "Q1_clean_text",
+            "Q2_ocr_usable",
+            "Q3_ocr_poor",
+            "Q4_metadata_only"
+          ]
+        },
+        "biomimetic_organism": {
+          "type": ["string", "null"],
+          "description": "仿生来源生物名称，标准化后的值"
+        },
+        "target_pollutants": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "目标污染物列表"
+        },
+        "prototype_targets": {
+          "type": "array",
+          "description": "关联的仿生设计库原型 ID",
+          "items": {
+            "type": "object",
+            "required": ["prototype_id", "confidence"],
+            "properties": {
+              "prototype_id": {
+                "type": "string",
+                "description": "原型 ID，如 lotus-leaf, mussel-foot-adhesion"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "映射置信度"
+              },
+              "match_reason": {
+                "type": "string",
+                "description": "匹配原因说明"
+              }
+            }
+          }
+        }
+      }
+    },
+    "biomimetic_metadata": {
+      "type": "object",
+      "description": "仿生设计库所需的元数据",
+      "additionalProperties": true,
+      "properties": {
+        "organism_scientific": {
+          "type": ["string", "null"],
+          "description": "学名，如 Mytilus edulis, Nelumbo nucifera"
+        },
+        "biomimetic_dimension": {
+          "enum": [
+            "分子仿生",
+            "结构仿生",
+            "形态仿生",
+            "过程仿生",
+            "功能仿生",
+            "系统仿生",
+            null
+          ],
+          "description": "仿生维度分类"
+        },
+        "features": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "特征标签，对齐 feature-mapping.json"
+        },
+        "applicability": {
+          "type": "object",
+          "description": "适用条件",
+          "properties": {
+            "pH_range": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "[min, max] pH 适用范围"
+            },
+            "temp_range": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "[min, max] 温度适用范围（°C）"
+            },
+            "salinity": {
+              "enum": ["low", "moderate", "high", "low_to_moderate", null],
+              "description": "盐度适用范围"
+            }
+          }
+        },
+        "engineering_constraints": {
+          "type": "array",
+          "description": "工程约束列表",
+          "items": {
+            "type": "object",
+            "required": ["constraint", "relevance"],
+            "properties": {
+              "constraint": {
+                "type": "string",
+                "description": "工程约束名称，如 抗菌性、耐酸性、可回收性"
+              },
+              "relevance": {
+                "enum": ["high", "medium", "low"],
+                "description": "相关性"
+              },
+              "explanation": {
+                "type": "string",
+                "description": "为什么该原型适用于此约束"
+              }
+            }
+          }
+        }
+      }
+    },
+    "biomimetic_narrative": {
+      "type": "object",
+      "description": "仿生设计叙事，用于 MaterialDesigningAgent",
+      "additionalProperties": true,
+      "properties": {
+        "problem_definition": {
+          "type": "string",
+          "description": "问题定义：自然界挑战 + 水处理对应"
+        },
+        "biological_solution": {
+          "type": "string",
+          "description": "生物解决方案：进化策略 + 关键机制 + 成功案例"
+        },
+        "key_features": {
+          "type": "string",
+          "description": "关键特征：必须保留特征 + 可灵活调整特征"
+        },
+        "design_mapping": {
+          "type": "string",
+          "description": "设计思路映射：生物→材料 + 软约束建议"
+        },
+        "explainability_anchors": {
+          "type": "string",
+          "description": "可解释性锚点：仿生故事线 + 设计溯源"
+        }
+      }
+    },
+    "decision_summary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["one_sentence_value"],
+      "properties": {
+        "one_sentence_value": { "type": ["string", "null"] },
+        "key_findings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "biomimetic_insight": {
+          "type": ["string", "null"],
+          "description": "可提取的仿生设计洞察"
+        },
+        "main_limitations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "knowledge_items": {
+      "type": "array",
+      "description": "参数级知识条目",
+      "items": { "$ref": "#/$defs/knowledge_item" }
+    },
+    "vector_index_records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/vector_record" }
+    },
+    "quality_control": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [],
+      "properties": {
+        "json_parse_check": { "enum": ["pass", "fail"] },
+        "evidence_coverage": { "type": ["string", "null"] },
+        "missing_important_fields": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "suspicious_items": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "manual_review_recommendations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "processing_notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["page", "locator", "evidence_text", "quality"],
+      "properties": {
+        "page": { "type": ["integer", "string", "null"] },
+        "locator": { "type": ["string", "null"] },
+        "evidence_text": { "type": ["string", "null"] },
+        "quality": {
+          "enum": ["reliable", "needs_review", "suspicious", "unavailable"]
+        }
+      }
+    },
+    "knowledge_item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["record_id", "parameter", "value", "domain_direction", "evidence"],
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "description": "递增编号 ki_001, ki_002, ..."
+        },
+        "parameter": {
+          "type": "string",
+          "description": "参数/事实名称，建议中英双语"
+        },
+        "value": {
+          "description": "具体数值或结论"
+        },
+        "unit": {
+          "type": ["string", "null"],
+          "description": "单位，无数值时填 null"
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "参数成立的条件：污染物、材料、pH、温度、浓度、等温线模型等"
+        },
+        "domain_direction": {
+          "enum": [
+            "D1_adsorption_performance",
+            "D2_material_structure",
+            "D3_biological_source",
+            "D4_adsorption_mechanism",
+            "D5_engineering_constraint",
+            "D6_pollutant_application",
+            "D7_synthesis_method",
+            "D8_characterization",
+            "D9_comparison_review",
+            "D10_design_principle"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "source": {
+          "enum": ["literature", "patent", "standard", "llm_inference"],
+          "description": "知识来源类型"
+        },
+        "ref_doi": {
+          "type": ["string", "null"],
+          "description": "DOI 优先；source=llm_inference 时填 null"
+        },
+        "source_file": {
+          "type": ["string", "null"],
+          "description": "指向本地文献库的文件路径"
+        },
+        "verification": {
+          "enum": ["verified", "unverified", "conflict"],
+          "description": "核查状态，提取时默认 unverified"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "置信度 0-1"
+        },
+        "notes": {
+          "type": ["string", "null"],
+          "description": "补充说明、换算、不确定性"
+        }
+      }
+    },
+    "vector_record": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["record_id", "title_zh", "summary_zh", "embedding_text_zh"],
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "description": "递增编号 vr_001, vr_002, ..."
+        },
+        "chunk_type": {
+          "enum": [
+            "performance",
+            "mechanism",
+            "biomimetic_source",
+            "structure",
+            "engineering",
+            "application",
+            "synthesis",
+            "characterization",
+            "comparison",
+            "design_principle",
+            "review",
+            "background"
+          ]
+        },
+        "domain_direction": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "D1_adsorption_performance",
+              "D2_material_structure",
+              "D3_biological_source",
+              "D4_adsorption_mechanism",
+              "D5_engineering_constraint",
+              "D6_pollutant_application",
+              "D7_synthesis_method",
+              "D8_characterization",
+              "D9_comparison_review",
+              "D10_design_principle"
+            ]
+          }
+        },
+        "title_zh": { "type": "string" },
+        "summary_zh": { "type": "string" },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "embedding_text_zh": {
+          "type": "string",
+          "description": "150-300字中文连贯文本，含关键数值和条件，适合直接做embedding"
+        },
+        "source_evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        }
+      }
+    }
+  }
+}
