@@ -10,7 +10,8 @@
           "name": "qwen3.6-plus",
           "reasoning": true,
           "input": [
-            "text"
+            "text",
+            "image"
           ],
           "contextWindow": 1000000,
           "maxTokens": 16384
@@ -27,7 +28,8 @@
           "name": "qwen3.6-plus",
           "reasoning": true,
           "input": [
-            "text"
+            "text",
+            "image"
           ],
           "contextWindow": 1000000,
           "maxTokens": 16384
@@ -45,16 +47,17 @@
       ]
     },
     "mimo": {
-      "baseUrl": "https://token-plan-ams.xiaomimimo.com/v1",
+      "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
       "apiKey": "${MIMO_API_KEY}",
       "api": "openai-completions",
       "models": [
         {
-          "id": "mimo-v2.5-pro",
-          "name": "mimo-v2.5-pro",
+          "id": "mimo-v2.5",
+          "name": "mimo-v2.5",
           "reasoning": true,
           "input": [
-            "text"
+            "text",
+            "image"
           ],
           "contextWindow": 1000000,
           "maxTokens": 16384
@@ -168,7 +171,10 @@
             "cacheWrite": 0
           },
           "contextWindow": 262144,
-          "maxTokens": 8192
+          "maxTokens": 8192,
+          "compat": {
+            "requiresStringContent": true
+          }
         },
         {
           "id": "moonshotai/kimi-k2.5",
@@ -184,7 +190,10 @@
             "cacheWrite": 0
           },
           "contextWindow": 262144,
-          "maxTokens": 8192
+          "maxTokens": 8192,
+          "compat": {
+            "requiresStringContent": true
+          }
         },
         {
           "id": "minimaxai/minimax-m2.5",
@@ -200,7 +209,10 @@
             "cacheWrite": 0
           },
           "contextWindow": 196608,
-          "maxTokens": 8192
+          "maxTokens": 8192,
+          "compat": {
+            "requiresStringContent": true
+          }
         },
         {
           "id": "z-ai/glm5",
@@ -216,7 +228,10 @@
             "cacheWrite": 0
           },
           "contextWindow": 202752,
-          "maxTokens": 8192
+          "maxTokens": 8192,
+          "compat": {
+            "requiresStringContent": true
+          }
         }
       ],
       "apiKey": "NVIDIA_API_KEY"

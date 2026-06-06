@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Multi-worker concurrent PDF extraction for JJJ Literature.
+# Multi-worker concurrent PDF extraction for Biomimetic Design Library.
 # Selects 1/2/3 workers explicitly before each run.
 # Uses Python queue_helper.py for cross-platform atomic locking (macOS compatible).
 
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROMPT_FILE="$REPO_DIR/prompts/jjj_single_agent_extraction_prompt.md"
+PROMPT_FILE="$REPO_DIR/prompts/biomimetic_extraction_prompt.md"
 DEFAULT_OUT_DIR="$REPO_DIR/outputs/extractions"
 PID_DIR="/tmp/openclaw/multi_extract_pids"
 QH="$REPO_DIR/scripts/queue_helper.py"
@@ -59,6 +59,7 @@ unified_json_path() {
     *"/专利/"*) echo "$OUT_DIR/专利/json/$stem.json" ;;
     *"/书本/中文/"*) echo "$OUT_DIR/书本/中文/json/$stem.json" ;;
     *"/书本/英文/"*) echo "$OUT_DIR/书本/英文/json/$stem.json" ;;
+    *"/论文/"*) echo "$OUT_DIR/论文/json/$stem.json" ;;
     *) echo "" ;;
   esac
 }
@@ -116,9 +117,9 @@ Usage: scripts/multi_worker_extract.sh --pdf-dir <DIR> [options]
   --include-bailian    Legacy alias for --workers 3.
   --force    --dry-run    -h/--help
 Worker mapping:
-  1 = mimo/mimo-v2.5-pro
-  2 = bailian/qwen3.6-plus + mimo/mimo-v2.5-pro
-  3 = dashscope/qwen3.6-plus + bailian/qwen3.6-plus + mimo/mimo-v2.5-pro
+  1 = bailian/qwen3.6-plus (多模态)
+  2 = bailian/qwen3.6-plus + mimo/mimo-v2.5 (双路多模态)
+  3 = dashscope/qwen3.6-plus + bailian/qwen3.6-plus + mimo/mimo-v2.5 (三路多模态)
 USAGE
 }
 
@@ -147,15 +148,15 @@ export OPENCLAW_CONFIG_PATH="$REPO_DIR/openclaw.json"
 
 case "$WORKERS" in
   1)
-    MODELS=("mimo/mimo-v2.5-pro")
+    MODELS=("mimo/mimo-v2.5")
     MODEL_LABELS=("mimo-v25pro")
     ;;
   2)
-    MODELS=("bailian/qwen3.6-plus" "mimo/mimo-v2.5-pro")
+    MODELS=("bailian/qwen3.6-plus" "mimo/mimo-v2.5")
     MODEL_LABELS=("bailian-qwen36" "mimo-v25pro")
     ;;
   3)
-    MODELS=("dashscope/qwen3.6-plus" "bailian/qwen3.6-plus" "mimo/mimo-v2.5-pro")
+    MODELS=("dashscope/qwen3.6-plus" "bailian/qwen3.6-plus" "mimo/mimo-v2.5")
     MODEL_LABELS=("dashscope-qwen36" "bailian-qwen36" "mimo-v25pro")
     ;;
   *)
@@ -646,18 +647,96 @@ worker() {
   echo "[worker $worker_id] done  processed=$processed  skipped=$skipped" | tee -a "$worker_log"
 }
 
+# ── heartbeat: hourly iMessage status report ────────────────────────
+heartbeat_loop() {
+  local run_start_iso; run_start_iso="$(timestamp)"
+  local last_report_iso="$run_start_iso"
+
+  while true; do
+    # Sleep until the next hour mark (or 60s if already past)
+    local now_s; now_s="$(date +%s)"
+    local next_hour_s=$(( (now_s / 3600 + 1) * 3600 ))
+    local sleep_s=$(( next_hour_s - now_s ))
+    [[ "$sleep_s" -lt 5 ]] && sleep_s=3600
+    sleep "$sleep_s"
+
+    local report_ts; report_ts="$(date '+%Y-%m-%d %H:%M')"
+    local now_iso; now_iso="$(timestamp)"
+
+    # Count totals from TSVs
+    local total_success total_failure recent_success recent_failure
+    total_success=$(awk -F'\t' 'NR>1' "$SUCCESS_TSV" 2>/dev/null | wc -l | tr -d ' ')
+    total_failure=$(awk -F'\t' 'NR>1' "$FAILURES_TSV" 2>/dev/null | wc -l | tr -d ' ')
+
+    # Recent = entries with ISO timestamp >= last_report_iso
+    recent_success=$(awk -F'\t' -v cutoff="$last_report_iso" 'NR>1 && $1 >= cutoff' "$SUCCESS_TSV" 2>/dev/null | wc -l | tr -d ' ')
+    recent_failure=$(awk -F'\t' -v cutoff="$last_report_iso" 'NR>1 && $1 >= cutoff' "$FAILURES_TSV" 2>/dev/null | wc -l | tr -d ' ')
+
+    # Remaining queue
+    local remaining=0
+    [[ -f "$QUEUE_FILE" ]] && remaining=$(wc -l < "$QUEUE_FILE" | tr -d ' ')
+
+    # Recent error reasons (last hour, max 3)
+    local recent_errors=""
+    if [[ -f "$FAILURES_TSV" ]]; then
+      recent_errors=$(awk -F'\t' -v cutoff="$last_report_iso" 'NR>1 && $1 >= cutoff {print $7}' "$FAILURES_TSV" 2>/dev/null | sort | uniq -c | sort -rn | head -3)
+    fi
+
+    # Worker status (check if PIDs are alive)
+    local worker_status=""
+    for i in "${!MODELS[@]}"; do
+      local pid_file="$PID_DIR/worker_$((i+1)).pid"
+      local pid_val; [[ -f "$pid_file" ]] && pid_val="$(cat "$pid_file")"
+      if [[ -n "$pid_val" ]] && kill -0 "$pid_val" 2>/dev/null; then
+        worker_status+="  ✅ W$((i+1)) ${MODEL_LABELS[$i]} (PID $pid_val)\n"
+      else
+        worker_status+="  ⏹ W$((i+1)) ${MODEL_LABELS[$i]} (已结束)\n"
+      fi
+    done
+
+    local msg="📊 提参心跳汇报 [$report_ts]
+Workers:
+${worker_status}
+近1小时进展:
+  成功: ${recent_success} 篇
+  失败: ${recent_failure} 篇
+累计:
+  成功: ${total_success} 篇
+  失败: ${total_failure} 篇
+剩余队列: ${remaining} 篇"
+
+    if [[ -n "$recent_errors" ]]; then
+      msg+="
+近1小时错误:
+${recent_errors}"
+    fi
+
+    notify_imsg "$msg"
+    last_report_iso="$now_iso"
+    echo "[heartbeat] report sent at $report_ts  success=$total_success failure=$total_failure remaining=$remaining" | tee -a "$LOG_DIR/heartbeat.log"
+  done
+}
+
 # ── launch ──────────────────────────────────────────────────────────
-echo "Launching ${#MODELS[@]} workers..."
+echo "Launching ${#MODELS[@]} workers + heartbeat..."
 for i in "${!MODELS[@]}"; do
   worker "$((i+1))" "${MODELS[$i]}" "${MODEL_LABELS[$i]}" &
   echo $! > "$PID_DIR/worker_$((i+1)).pid"
   echo "  Worker $((i+1)): PID $!  ${MODELS[$i]}"
 done
+heartbeat_loop &
+HEARTBEAT_PID=$!
+echo $HEARTBEAT_PID > "$PID_DIR/heartbeat.pid"
+echo "  Heartbeat: PID $HEARTBEAT_PID (hourly iMessage reports)"
 echo $$ > "$PID_DIR/launcher.pid"
 echo ""; echo "Running. Queue: $QUEUE_FILE"; echo ""
 
 # ── wait & summary ──────────────────────────────────────────────────
 wait
+
+# Kill heartbeat after all workers finish
+kill $HEARTBEAT_PID 2>/dev/null || true
+echo "[heartbeat] stopped (all workers done)" | tee -a "$LOG_DIR/heartbeat.log"
 
 success_count=$(( $(wc -l < "$SUCCESS_TSV" | tr -d ' ') - 1 ))
 failure_count=$(( $(wc -l < "$FAILURES_TSV" | tr -d ' ') - 1 ))

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Batch PDF extraction runner for the JJJ offshore oil/gas pollution project.
+# Batch PDF extraction runner for Biomimetic Design Library.
 #
 # It scans a PDF folder, calls `openclaw agent` once per PDF, saves raw output,
 # extracts the first valid JSON object, records logs, and supports resume.
@@ -7,7 +7,7 @@
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEFAULT_PROMPT_FILE="$REPO_DIR/prompts/jjj_single_agent_extraction_prompt.md"
+DEFAULT_PROMPT_FILE="$REPO_DIR/prompts/biomimetic_extraction_prompt.md"
 DEFAULT_OUT_DIR="$REPO_DIR/outputs/litextract_batch"
 
 load_dotenv() {
@@ -96,13 +96,13 @@ Required:
 
 Options:
   --out-dir DIR              Output folder. Default: outputs/litextract_batch
-  --prompt-file FILE         Prompt file. Default: prompts/jjj_single_agent_extraction_prompt.md
+  --prompt-file FILE         Prompt file. Default: prompts/biomimetic_extraction_prompt.md
   --limit N                  Process only first N PDFs. Use 20-50 for pilot runs.
   --timeout-seconds N        Timeout per PDF. Default: 1800
   --sleep-seconds N          Pause between PDFs. Default: 2
   --preprocess               Run scripts/preprocess.py before extraction.
   --max-workers N            Visual preprocessing workers. Default: 4
-  --model MODEL              Model override, e.g. bailian/qwen3.6-plus or mimo/mimo-v2.5-pro.
+  --model MODEL              Model override, e.g. bailian/qwen3.6-plus or mimo/mimo-v2.5.
   --force                    Re-run even when a valid JSON already exists.
   --dry-run                  Only list PDFs and planned outputs.
   -h, --help                 Show this help.

@@ -27,7 +27,7 @@ from openai import OpenAI
 # Configuration
 # ═══════════════════════════════════════════════════════════
 
-DASHSCOPE_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+BAILIAN_BASE = "https://coding.dashscope.aliyuncs.com/v1"
 
 VISUAL_READING_PROMPT = """你是一个学术文献视觉读取专家。请仔细观察这一页PDF图片，将页面上所有可见信息转录为结构化Markdown。
 
@@ -140,8 +140,9 @@ def run_stage0(pdf_path: str) -> dict:
 # Stage 1: Parallel visual reading
 # ═══════════════════════════════════════════════════════════
 
-def read_page_visual(client: OpenAI, pdf_path: str, page_num: int, dpi: int = 150) -> tuple:
-    """Read a single page visually. Returns (page_num, markdown_text)."""
+def read_page_visual(client: OpenAI, pdf_path: str, page_num: int, dpi: int = 150,
+                     max_retries: int = 5) -> tuple:
+    """Read a single page visually with exponential backoff retry. Returns (page_num, markdown_text)."""
     doc = fitz.open(pdf_path)
     page = doc[page_num - 1]
     pix = page.get_pixmap(dpi=dpi)
@@ -157,18 +158,28 @@ def read_page_visual(client: OpenAI, pdf_path: str, page_num: int, dpi: int = 15
         ],
     }]
 
-    resp = client.chat.completions.create(
-        model="qwen3.6-plus",
-        messages=messages,
-        max_tokens=16384,
-    )
-    return page_num, resp.choices[0].message.content or ""
+    for attempt in range(max_retries):
+        try:
+            resp = client.chat.completions.create(
+                model="qwen3.6-plus",
+                messages=messages,
+                max_tokens=16384,
+            )
+            return page_num, resp.choices[0].message.content or ""
+        except Exception as e:
+            if "429" in str(e) and attempt < max_retries - 1:
+                wait = 2 ** attempt
+                print(f"    Page {page_num} rate limited, retry in {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
+    return page_num, ""
 
 
 def run_stage1_parallel(stage0: dict, pdf_path: str, api_key: str,
                         max_workers: int = 17) -> dict[int, str]:
     """Run all data page visual reads in parallel."""
-    client = OpenAI(base_url=DASHSCOPE_BASE, api_key=api_key)
+    client = OpenAI(base_url=BAILIAN_BASE, api_key=api_key)
     page_nums = stage0["data_page_nums"]
 
     print(f"\nStage 1: {len(page_nums)} pages in parallel (max_workers={max_workers})...")
@@ -200,15 +211,15 @@ def main() -> None:
     )
     parser.add_argument("pdf", help="PDF file path")
     parser.add_argument("--api-key", help="DashScope API key", default=None)
-    parser.add_argument("--max-workers", type=int, default=17,
-                        help="Max parallel workers (default: 17)")
+    parser.add_argument("--max-workers", type=int, default=2,
+                        help="Max parallel workers (default: 2, reduced to avoid 429)")
     parser.add_argument("-o", "--output", help="Cache output path", default=None)
     args = parser.parse_args()
 
     api_key = (
         args.api_key
-        or os.environ.get("DASHSCOPE_API_KEY")
         or os.environ.get("BAILIAN_CODING_PLAN_API_KEY")
+        or os.environ.get("DASHSCOPE_API_KEY")
     )
     if not api_key:
         print("ERROR: Set BAILIAN_CODING_PLAN_API_KEY or DASHSCOPE_API_KEY, or use --api-key")

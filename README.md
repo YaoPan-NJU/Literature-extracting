@@ -152,7 +152,7 @@ curl -s http://127.0.0.1:18789/health
 ```bash
 export OPENCLAW_CONFIG_PATH="$PWD/openclaw.json"
 openclaw agent --local --agent lit-extract --timeout 300 \
-  --message "$(printf '请读取并提取以下 PDF：\n%s\n\n请严格遵循项目提示词，只输出 JSON。\n\n' '/path/to/paper.pdf'; cat prompts/jjj_single_agent_extraction_prompt.md)"
+  --message "$(printf '请读取并提取以下 PDF：\n%s\n\n请严格遵循项目提示词，只输出 JSON。\n\n' '/path/to/paper.pdf'; cat prompts/biomimetic_extraction_prompt.md)"
 ```
 
 模型会自主判断文献内容，提取有价值的参数级知识条目，输出结构化 JSON。
@@ -297,31 +297,32 @@ outputs/extractions/
 
 ```json
 {
-  "schema_version": "jjj-v2",
-  "paper_id": "Yuan_2015_coastal_petroleum_degrading_bacteria",
+  "schema_version": "biomimetic-v1",
+  "paper_id": "Lee_2007_mussel_inspired_adhesion",
   "bibliographic_metadata": {
-    "title": "海岸带石油降解菌的分离及多样性分析",
-    "authors": ["袁梦"],
-    "year": 2015,
+    "title": "Mussel-Inspired Surface Chemistry for Multifunctional Coatings",
+    "authors": ["Haeshin Lee", "Shara M. Dellatore", "William M. Miller", "Phillip B. Messersmith"],
+    "year": 2007,
     "abstract": "..."
   },
   "routing": {
-    "relevance_level": "R2_domain_direct",
-    "relevance_reason": "研究海岸带石油降解菌，可迁移至近海油气田生物修复",
-    "document_type": "T4_thesis_book_chapter",
-    "domain_directions": ["D1_pollutant_source", "D5_treatment_technology"],
-    "text_quality": "Q1_clean_text"
+    "document_type": "T1_article",
+    "domain_directions": ["D3_biological_source", "D4_adsorption_mechanism", "D7_synthesis_method"],
+    "text_quality": "Q1_clean_text",
+    "biomimetic_relevance": "direct",
+    "biomimetic_organism": "mussel",
+    "target_pollutants": ["Pb(II)", "Cu(II)", "Cd(II)"]
   },
   "decision_summary": {
-    "one_sentence_value": "该论文分离出3株石油降解菌，量化了降解率，为生物修复提供菌种资源",
-    "key_findings": ["菌株A降解率30.52%", "组合菌降解率高于单菌"],
-    "transferable_value": null,
-    "main_limitations": ["仅限实验室规模"]
+    "one_sentence_value": "首次报道聚多巴胺仿贻贝涂层的通用表面改性方法，为仿生吸附材料提供基础平台",
+    "key_findings": ["多巴胺在弱碱性条件下自聚合形成PDA涂层", "PDA涂层可修饰几乎所有材料表面"],
+    "biomimetic_insight": "贻贝足丝蛋白的儿茶酚基团提供了通用的表面粘附机制",
+    "main_limitations": ["未涉及具体吸附性能数据"]
   },
   "knowledge_items": [
     {
       "record_id": "ki_001",
-      "parameter": "菌株A鉴定与降解率 Strain A identification and degradation rate",
+      "parameter": "多巴胺聚合条件 Dopamine polymerization conditions",
       "value": "Gallaecimonas pentaromativorans，降解率30.52%",
       "unit": "%",
       "context": {
@@ -444,7 +445,7 @@ source .venv/bin/activate
 python3 -c "
 import json, glob
 from jsonschema import validate, ValidationError
-schema = json.load(open('schema/jjj_literature_extraction.schema.json'))
+schema = json.load(open('schema/biomimetic_extraction.schema.json'))
 for f in glob.glob('outputs/pilot_20/json/*.json'):
     data = json.load(open(f))
     try:
@@ -479,9 +480,11 @@ Literature-extracting/
 ├── outputs/
 │   └── extractions/           # 统一提参结果、成功清单、剩余队列和进度统计
 ├── prompts/
-│   └── jjj_single_agent_extraction_prompt.md   # v2 提示词（模型自主提取）
+│   ├── jjj_single_agent_extraction_prompt.md   # 原始提示词（油气田领域）
+│   └── biomimetic_extraction_prompt.md         # 仿生水处理吸附材料提取提示词
 ├── schema/
-│   └── jjj_literature_extraction.schema.json   # v2 JSON Schema
+│   ├── jjj_literature_extraction.schema.json   # 原始 Schema（油气田领域）
+│   └── biomimetic_extraction.schema.json       # 仿生水处理吸附材料提取 Schema
 ├── workspace/
 │   ├── IDENTITY.md            # Agent 角色定义
 │   ├── SOUL.md                # 行为准则

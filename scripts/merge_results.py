@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-SRC_ROOT = REPO / "workspace" / "近海油气田污染物相关文献"
+SRC_ROOT = REPO / "workspace" / "仿生文献库"
 OUT_ROOT = REPO / "outputs" / "extractions"
 
 # Source category directories (relative to SRC_ROOT)
@@ -46,7 +46,7 @@ def sha1(text: str) -> str:
 
 
 def is_v2_json(path: Path) -> bool:
-    """Check if a JSON file has the full jjj-v2 schema."""
+    """Check if a JSON file has the full biomimetic-v1 schema."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             obj = json.load(f)
