@@ -6,10 +6,10 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 文档更新时间 | 2026-06-06T17:26:45+08:00 |
-| manifest 生成时间 | 2026-06-06T17:26:31.917090 |
-| 文献库总量 | 215 |
-| 已提参 | 215 |
+| 文档更新时间 | 2026-06-07T01:03:01+08:00 |
+| manifest 生成时间 | 2026-06-07T01:03:00 |
+| 文献库总量 | 37 |
+| 已提参 | 37 |
 | 剩余 | 0 |
 | 总进度 | 100.0% |
 
@@ -27,46 +27,47 @@
 
 | 分类 | 总数 | 已提参 | 剩余 | 进度 |
 | --- | --- | --- | --- | --- |
-| 论文 | 215 | 215 | 0 | 100.0% |
 | 英文文献 | 0 | 0 | 0 | n/a |
 | 中文文献 | 0 | 0 | 0 | n/a |
-| 专利 | 0 | 0 | 0 | n/a |
-| 书本 | 0 | 0 | 0 | n/a |
+| 专利 | 37 | 37 | -37 | 100.0% |
+| 书本/中文 | 0 | 0 | 0 | n/a |
+| 书本/英文 | 0 | 0 | 0 | n/a |
 
 ## 输出 JSON 计数
 
 | 输出目录 | JSON 数量 |
 | --- | --- |
-| outputs/extractions/专利 | 0 |
+| outputs/extractions/专利 | 70 |
 | outputs/extractions/中文文献 | 0 |
 | outputs/extractions/书本 | 0 |
+| outputs/extractions/标准 | 3 |
 | outputs/extractions/英文文献 | 0 |
-| outputs/extractions/论文 | 215 |
+| outputs/extractions/论文 | 275 |
 
 ## 最近已提文献
 
 | 时间 | 分类 | 模型 | 文献 |
 | --- | --- | --- | --- |
-| 2026-06-06T17:26:31.916877 | 论文 | mimo-v2.5 | 2023-胡-壳聚糖-纤维素-吸附-重金属 |
-| 2026-06-06T17:26:31.916882 | 论文 | mimo-v2.5 | 2024-Bao-wastewater-removal-review |
-| 2026-06-06T17:26:31.916887 | 论文 | mimo-v2.5 | 2024-Hsu-chitosan-adsorption-heavy-metal-review |
-| 2026-06-06T17:26:31.916892 | 论文 | mimo-v2.5 | 2024-Jaffar-membrane-hydroxyapatite-adsorption-adsorbent-review |
-| 2026-06-06T17:26:31.916898 | 论文 | mimo-v2.5 | 2024-Jiang-cellulose-magnetic-mof-metal-organic-review |
-| 2026-06-06T17:26:31.916903 | 论文 | mimo-v2.5 | 2024-Kang-superhydrophobic-hydrophobic-self-cleaning-separation |
-| 2026-06-06T17:26:31.916908 | 论文 | mimo-v2.5 | 2024-Liu-porous-hierarchical-adsorption-wastewater |
-| 2026-06-06T17:26:31.916914 | 论文 | mimo-v2.5 | 2024-Novair-wastewater-water-treatment-removal |
-| 2026-06-06T17:26:31.916919 | 论文 | mimo-v2.5 | 2024-Omar-superhydrophobic-hydrophobic-separation-membrane-review |
-| 2026-06-06T17:26:31.916924 | 论文 | mimo-v2.5 | 2024-Research-cellulose-nanocellulose-mof-biochar-review |
-| 2026-06-06T17:26:31.916929 | 论文 | mimo-v2.5 | 2024-Rev-hierarchical-bone-nanofiber-review |
-| 2026-06-06T17:26:31.916945 | 论文 | mimo-v2.5 | 2024-Sciences-separation-adsorbent-review |
-| 2026-06-06T17:26:31.916960 | 论文 | mimo-v2.5 | 2024-Technol-superhydrophobic-hydrophobic-biochar-wastewater-review |
-| 2026-06-06T17:26:31.916969 | 论文 | mimo-v2.5 | 2024-Xiong-superhydrophobic-hydrophobic-separation-wastewater-review |
-| 2026-06-06T17:26:31.916976 | 论文 | mimo-v2.5 | 2025-Azad-polydopamine-dopamine-superhydrophobic-hydrophobic-review |
-| 2026-06-06T17:26:31.916983 | 论文 | mimo-v2.5 | 2025-Dong-alginate-adsorption-heavy-metal-dye-review |
-| 2026-06-06T17:26:31.916989 | 论文 | mimo-v2.5 | 2025-Foorginezhad-membrane-heavy-metal-water-treatment-removal-review |
-| 2026-06-06T17:26:31.916995 | 论文 | mimo-v2.5 | 2025-Gao-separation-membrane-review |
-| 2026-06-06T17:26:31.917001 | 论文 | mimo-v2.5 | 2025-Liu-hydrophobic-antifouling-separation-review |
-| 2026-06-06T17:26:31.917007 | 论文 | mimo-v2.5 | 2025-Wang-superhydrophobic-hydrophobic-self-cleaning-separation-review |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114682215A-仿生-重金属-吸附-废水.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114772567A-羟基磷灰石-吸附-除氟.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114832781A-超疏水-油水分离-吸附-海绵.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114849640A-羟基磷灰石-吸附-染料 2.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114849640A-羟基磷灰石-吸附-染料.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114849661A-聚多巴胺-吸附-膜.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114873705A-壳聚糖-磁性-重金属-废水.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114874407A-超疏水-海绵.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114887602A-聚多巴胺-纤维素-吸附-除磷.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114920307A-海藻酸钠-纤维素-吸附-水处理.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN114988519A-油水分离-废水-膜-泡沫.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN115040496A-聚多巴胺-壳聚糖-吸附.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN115044085A-超疏水-膜.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2022-CN115055171A-聚多巴胺-磁性-重金属-吸附.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2024-CN117654453A-壳聚糖-海藻酸钠-磁性-生物基.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2025-CN119488883A-壳聚糖-海藻酸钠-纤维素-生物基.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2025-CN119524803A-生物基-吸附.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2025-CN120325258A-生物基-吸附-染料.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2025-CN121130847A-壳聚糖-纤维素-生物基-MOF.pdf |
+| 2026-06-07T01:03:00 | 专利 | unified | 2026-CN121715049A-仿生-膜.pdf |
 
 ## 下一批候选
 

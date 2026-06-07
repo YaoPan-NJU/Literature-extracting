@@ -48,7 +48,12 @@
         "chapter_title": { "type": ["string", "null"] },
         "editors": { "type": ["string", "null"] },
         "publisher": { "type": ["string", "null"] },
-        "isbn": { "type": ["string", "null"] }
+        "isbn": { "type": ["string", "null"] },
+        "patent_number": { "type": ["string", "null"], "description": "专利号，仅 T2_patent" },
+        "applicant": { "type": ["string", "null"], "description": "专利申请人，仅 T2_patent" },
+        "ipc_class": { "type": ["string", "null"], "description": "IPC 分类号，仅 T2_patent" },
+        "standard_number": { "type": ["string", "null"], "description": "标准号，仅 T3_standard_guideline" },
+        "issuing_body": { "type": ["string", "null"], "description": "标准发布机构，仅 T3_standard_guideline" }
       }
     },
     "routing": {
@@ -349,7 +354,15 @@
         },
         "ref_doi": {
           "type": ["string", "null"],
-          "description": "DOI 优先；source=llm_inference 时填 null"
+          "description": "DOI 优先；source=llm_inference 时填 null；专利和标准填 null"
+        },
+        "patent_number": {
+          "type": ["string", "null"],
+          "description": "专利号（如 CN105771933A），仅 source=patent 时填"
+        },
+        "standard_number": {
+          "type": ["string", "null"],
+          "description": "标准号（如 GB 3838-2002），仅 source=standard 时填"
         },
         "source_file": {
           "type": ["string", "null"],

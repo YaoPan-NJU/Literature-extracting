@@ -283,6 +283,134 @@ fish-scale-hydroxyapatite, cell-membrane-ion-channel, magnetic-bacteria
 
 ---
 
+## 专利（T2_patent）专项提取策略
+
+当 `document_type` 判断为 `T2_patent` 时，执行以下专项策略。
+
+### 专利的特殊标识符
+
+- **专利号**（必须）：如 `CN105771933A`、`CN105413659B`，填入 `bibliographic_metadata.patent_number`
+- `doi` 字段填 null（专利没有 DOI）
+- `source` 字段填"专利局公报"或具体专利局名称
+
+### 专利结构认知
+
+专利通常包含：
+1. **著录项目**：申请人、发明人、申请日、公开日、IPC 分类号
+2. **权利要求书**：法律保护范围，定义技术方案边界
+3. **说明书**：技术领域、背景技术、发明内容、具体实施方式
+4. **实施例**：具体的材料配方、制备步骤、性能测试数据（这是最有价值的部分）
+
+### 专利的提取重点
+
+- **实施例数据**（最高优先）：每个实施例的材料配方、制备参数、性能数据分别提取为独立 knowledge_item
+- **权利要求中的技术特征**：核心材料组成、结构特征、制备方法
+- **材料配方**：各组分比例、浓度、反应条件
+- **性能数据**：吸附容量、去除率、选择性系数等（来自实施例测试）
+- **制备工艺**：步骤、温度、时间、pH、搅拌速度等
+
+### 专利的 bibliographic_metadata 补充
+
+```json
+{
+  "title": "专利标题",
+  "authors": ["发明人1", "发明人2"],
+  "year": 2018,
+  "source": "国家知识产权局",
+  "doi": null,
+  "patent_number": "CN105413659B",
+  "applicant": "申请人/申请单位",
+  "ipc_class": "C02F1/28",
+  "language": "zh",
+  "keywords": ["关键词"],
+  "abstract": "摘要",
+  "file_name": "文件名"
+}
+```
+
+### 专利的输出密度要求
+
+- 通常应输出 8-20 条 `knowledge_items`
+- 每个有价值的实施例至少提取 2-3 条（配方 + 性能 + 工艺）
+
+---
+
+## 标准/规范（T3_standard_guideline）专项提取策略
+
+当 `document_type` 判断为 `T3_standard_guideline` 时，执行以下专项策略。
+
+### 标准的特殊标识符
+
+- **标准号**（必须）：如 `GB 3838-2002`、`HJ 535-2009`，填入 `bibliographic_metadata.standard_number`
+- `doi` 字段填 null（标准没有 DOI）
+- `source` 字段填发布机构名称（如"生态环境部"、"国家标准化管理委员会"）
+
+### 标准的类型区分
+
+1. **排放标准**（如 GB 21900-2008 电镀污染物排放标准）：规定污染物排放限值
+2. **质量标准**（如 GB 3838-2002 地表水环境质量标准）：规定水质指标限值
+3. **方法标准**（如 HJ 535-2009 水质 氨氮的测定）：规定检测方法和操作规程
+4. **产品标准**（如 GB/T 13800-2008）：规定材料/产品性能要求
+
+### 标准的提取重点
+
+- **限值数据**（最高优先）：各类污染物的最高允许浓度/排放限值，这是标准的核心价值
+- **适用范围**：适用的行业、水体类型、污染物类型
+- **测试方法**：引用的检测标准、采样方法、分析方法
+- **分级限值**：不同等级（如一级A、一级B）的限值差异
+- **时间节点**：标准实施日期、过渡期要求
+
+### 标准的 knowledge_items 提取方式
+
+标准的"性能数据"不是 qmax，而是**限值/阈值**：
+
+```json
+{
+  "record_id": "ki_001",
+  "parameter": "COD 排放限值",
+  "value": "100",
+  "unit": "mg/L",
+  "context": {
+    "适用范围": "电镀行业",
+    "排放等级": "直接排放",
+    "标准名称": "GB 21900-2008"
+  },
+  "domain_direction": "D6_pollutant_application",
+  "evidence": [{"page": 3, "locator": "表1", "evidence_text": "COD ≤ 100 mg/L", "quality": "reliable"}],
+  "quality": "reliable",
+  "source": "standard",
+  "ref_doi": null,
+  "standard_number": "GB 21900-2008",
+  "source_file": "标准/GB 21900-2008-电镀污染物排放标准.pdf"
+}
+```
+
+### 标准的 bibliographic_metadata 补充
+
+```json
+{
+  "title": "标准名称",
+  "authors": [],
+  "year": 2008,
+  "source": "国家标准化管理委员会",
+  "doi": null,
+  "standard_number": "GB 21900-2008",
+  "issuing_body": "生态环境部",
+  "language": "zh",
+  "keywords": ["电镀", "排放标准", "重金属"],
+  "abstract": "标准适用范围说明",
+  "file_name": "文件名"
+}
+```
+
+### 标准的输出密度要求
+
+- 排放/质量标准：限值条目 10-30 条（每个污染物一个限值）
+- 方法标准：操作步骤 5-15 条
+- `domain_direction` 主要用 `D6_pollutant_application` 和 `D5_engineering_constraint`
+
+---
+
 ## 输出要求
 
 只输出一个严格 JSON 对象，不要输出 Markdown、解释文字或代码块。
@@ -324,6 +452,10 @@ fish-scale-hydroxyapatite, cell-membrane-ion-channel, magnetic-bacteria
 `authors` 必须是字符串数组。未知时填空数组。
 
 如果是书本/专著，额外补充：`book_title`、`chapter_title`、`editors`、`publisher`、`isbn`。
+
+如果是专利（T2_patent），`doi` 填 null，改用 `patent_number`（如 CN105771933A），补充 `applicant`、`ipc_class`。
+
+如果是标准（T3_standard_guideline），`doi` 填 null，改用 `standard_number`（如 GB 3838-2002），补充 `issuing_body`。
 
 ### routing
 
@@ -431,7 +563,9 @@ fish-scale-hydroxyapatite, cell-membrane-ion-channel, magnetic-bacteria
 - `evidence`：数组，每条包含 page、locator、evidence_text、quality
 - `evidence.quality`：`reliable` / `needs_review` / `suspicious` / `unavailable`（见质量标注规则）
 - `source`：`literature` / `patent` / `standard` / `llm_inference`
-- `ref_doi`：DOI 优先；source=llm_inference 时填 null
+- `ref_doi`：DOI 优先；source=llm_inference 时填 null；专利和标准填 null
+- `patent_number`：专利号（如 CN105771933A），仅 source=patent 时填
+- `standard_number`：标准号（如 GB 3838-2002），仅 source=standard 时填
 - `source_file`：指向本地文献库的文件路径
 - `verification`：`unverified`（提取时默认，核查后改 verified）
 - `notes`：补充说明

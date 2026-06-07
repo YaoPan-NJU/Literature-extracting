@@ -6,7 +6,7 @@
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROMPT_FILE="$REPO_DIR/prompts/biomimetic_extraction_prompt.md"
+PROMPT_FILE="$REPO_DIR/prompts/biomimetic_extraction_prompt_v2.md"
 DEFAULT_OUT_DIR="$REPO_DIR/outputs/extractions"
 PID_DIR="/tmp/openclaw/multi_extract_pids"
 QH="$REPO_DIR/scripts/queue_helper.py"
@@ -119,7 +119,7 @@ Usage: scripts/multi_worker_extract.sh --pdf-dir <DIR> [options]
 Worker mapping:
   1 = bailian/qwen3.6-plus (多模态)
   2 = bailian/qwen3.6-plus + mimo/mimo-v2.5 (双路多模态)
-  3 = dashscope/qwen3.6-plus + bailian/qwen3.6-plus + mimo/mimo-v2.5 (三路多模态)
+  3 = dashscope/qwen3.7-max + bailian/qwen3.6-plus + mimo/mimo-v2.5 (三路)
 USAGE
 }
 
@@ -156,8 +156,8 @@ case "$WORKERS" in
     MODEL_LABELS=("bailian-qwen36" "mimo-v25pro")
     ;;
   3)
-    MODELS=("dashscope/qwen3.6-plus" "bailian/qwen3.6-plus" "mimo/mimo-v2.5")
-    MODEL_LABELS=("dashscope-qwen36" "bailian-qwen36" "mimo-v25pro")
+    MODELS=("dashscope/qwen3.7-max" "bailian/qwen3.6-plus" "mimo/mimo-v2.5")
+    MODEL_LABELS=("dashscope-qwen37max" "bailian-qwen36" "mimo-v25pro")
     ;;
   *)
     echo "ERROR: --workers must be 1, 2, or 3" >&2
@@ -223,6 +223,13 @@ paths = []
 for dp, _, fns in os.walk(root):
     for fn in fns:
         if fn.lower().endswith(".pdf"):
+            base = fn[:-4]
+            # 跳过 macOS Finder 重复文件 (如 "file 2.pdf")，但如果原始文件不存在则保留
+            if base.endswith(" 2"):
+                original = os.path.join(dp, base[:-2] + ".pdf")
+                if os.path.exists(original):
+                    continue  # 原始文件存在，跳过重复
+                # 原始文件不存在，保留这个文件
             paths.append(os.path.join(dp, fn))
 for p in sorted(paths):
     print(p)
@@ -505,6 +512,7 @@ PYEOF
 
 # ── worker ──────────────────────────────────────────────────────────
 worker() {
+  export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
   local worker_id="$1" model="$2" label="$3"
   local worker_log="$LOG_DIR/worker_${worker_id}_${label}.log"
   local processed=0 skipped=0
@@ -717,12 +725,16 @@ ${recent_errors}"
   done
 }
 
-# ── launch ──────────────────────────────────────────────────────────
+# ── launch with auto-restart watchdog ─────────────────────────────
 echo "Launching ${#MODELS[@]} workers + heartbeat..."
-for i in "${!MODELS[@]}"; do
+launch_worker() {
+  local i="$1"
   worker "$((i+1))" "${MODELS[$i]}" "${MODEL_LABELS[$i]}" &
   echo $! > "$PID_DIR/worker_$((i+1)).pid"
   echo "  Worker $((i+1)): PID $!  ${MODELS[$i]}"
+}
+for i in "${!MODELS[@]}"; do
+  launch_worker "$i"
 done
 heartbeat_loop &
 HEARTBEAT_PID=$!
@@ -731,8 +743,41 @@ echo "  Heartbeat: PID $HEARTBEAT_PID (hourly iMessage reports)"
 echo $$ > "$PID_DIR/launcher.pid"
 echo ""; echo "Running. Queue: $QUEUE_FILE"; echo ""
 
-# ── wait & summary ──────────────────────────────────────────────────
-wait
+# ── watchdog: restart crashed workers ─────────────────────────────
+while true; do
+  sleep 30
+  all_done=true
+  for i in "${!MODELS[@]}"; do
+    pid_file="$PID_DIR/worker_$((i+1)).pid"
+    [[ -f "$pid_file" ]] && pid="$(cat "$pid_file")" || pid=""
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      echo "[watchdog] Worker $((i+1)) (PID $pid) crashed, restarting..."
+      launch_worker "$i"
+    fi
+    # Check if queue still has items
+    qh_result="$("$PYTHON_BIN" "$QH" pop "$QUEUE_FILE" 2>/dev/null)"
+    if [[ -n "$qh_result" ]]; then
+      # Put it back
+      "$PYTHON_BIN" "$QH" append "$QUEUE_FILE" "$qh_result" 2>/dev/null || true
+      all_done=false
+    fi
+  done
+  # If all workers done and queue empty, exit watchdog
+  if $all_done; then
+    any_running=false
+    for i in "${!MODELS[@]}"; do
+      pid_file="$PID_DIR/worker_$((i+1)).pid"
+      [[ -f "$pid_file" ]] && pid="$(cat "$pid_file")" || pid=""
+      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        any_running=true
+        break
+      fi
+    done
+    if ! $any_running; then
+      break
+    fi
+  fi
+done
 
 # Kill heartbeat after all workers finish
 kill $HEARTBEAT_PID 2>/dev/null || true

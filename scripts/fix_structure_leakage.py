@@ -102,6 +102,33 @@ def try_merge_leaked_items(items: list) -> tuple:
     return valid_items, orphaned_count
 
 
+def fix_routing_nested_data(data: dict) -> bool:
+    """
+    修复 routing 对象内部嵌套完整知识数据的问题。
+
+    问题：routing 对象内部错误地嵌套了 decision_summary、knowledge_items、
+    vector_index_records、quality_control 四个顶层字段。
+
+    修复：删除 routing 内部的这些字段（保留顶层版本）。
+    """
+    routing = data.get('routing', {})
+    if not routing:
+        return False
+
+    # 检查 routing 内部是否包含顶层字段
+    nested_keys = {'decision_summary', 'knowledge_items', 'vector_index_records', 'quality_control'}
+    found_keys = nested_keys.intersection(routing.keys())
+
+    if not found_keys:
+        return False
+
+    # 删除 routing 内部的嵌套字段
+    for key in found_keys:
+        del routing[key]
+
+    return True
+
+
 def fix_json_file(json_path: str, dry_run: bool = False) -> dict:
     """
     修复单个 JSON 文件。
@@ -111,8 +138,11 @@ def fix_json_file(json_path: str, dry_run: bool = False) -> dict:
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
+    # 修复 routing 嵌套问题
+    routing_fixed = fix_routing_nested_data(data)
+
     items = data.get('knowledge_items', [])
-    if not items:
+    if not items and not routing_fixed:
         return {'file': json_path, 'status': 'skip', 'reason': 'no knowledge_items'}
 
     # 统计修复前
@@ -142,7 +172,8 @@ def fix_json_file(json_path: str, dry_run: bool = False) -> dict:
 
     return {
         'file': os.path.basename(json_path),
-        'status': 'fixed' if before_total != after_total else 'unchanged',
+        'status': 'fixed' if (before_total != after_total or routing_fixed) else 'unchanged',
+        'routing_fixed': routing_fixed,
         'before': {
             'total': before_total,
             'valid': before_valid,
