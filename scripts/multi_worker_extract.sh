@@ -60,6 +60,9 @@ unified_json_path() {
     *"/书本/中文/"*) echo "$OUT_DIR/书本/中文/json/$stem.json" ;;
     *"/书本/英文/"*) echo "$OUT_DIR/书本/英文/json/$stem.json" ;;
     *"/论文/"*) echo "$OUT_DIR/论文/json/$stem.json" ;;
+    *"/missing_26_pdf_dir/"*) echo "$OUT_DIR/论文/json/$stem.json" ;;
+    *"/第二波/"*) echo "$OUT_DIR/第二波/json/$stem.json" ;;
+    *"/3rd/"*) echo "$OUT_DIR/第三波/json/$stem.json" ;;
     *) echo "" ;;
   esac
 }
@@ -388,11 +391,14 @@ def reconstruct_from_parts(t):
 
 obj = try_parse(text)
 if obj is None:
-    obj = reconstruct_from_parts(text)
-    if obj is not None:
-        print(f"reconstructed from parts: {len(obj.get('knowledge_items',[]))} ki", file=sys.stderr)
-if obj is None:
     print("No valid JSON found", file=sys.stderr); sys.exit(1)
+# Validate required fields
+required = ['schema_version', 'paper_id', 'knowledge_items']
+for field in required:
+    if field not in obj:
+        print(f"Missing required field: {field}", file=sys.stderr); sys.exit(1)
+if not obj['knowledge_items']:
+    print("Empty knowledge_items", file=sys.stderr); sys.exit(1)
 with open(json_path, "w", encoding="utf-8") as f:
     json.dump(obj, f, ensure_ascii=False, indent=2); f.write("\n")
 print(f"ok chars={len(json.dumps(obj))}")
