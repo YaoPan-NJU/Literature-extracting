@@ -118,8 +118,7 @@
     "mode": "local",
     "bind": "loopback",
     "auth": {
-      "mode": "none",
-      "token": "66fedbdafd976c2829148fe42b663fdcb5817f8ad830d38b"
+      "mode": "none"
     }
   },
   "memory": {},
