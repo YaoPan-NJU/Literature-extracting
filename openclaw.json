@@ -1,7 +1,7 @@
 {
   "meta": {
-    "lastTouchedVersion": "2026.4.27",
-    "lastTouchedAt": "2026-04-30T07:47:03.527Z"
+    "lastTouchedVersion": "2026.5.18",
+    "lastTouchedAt": "2026-06-10T05:41:57.528Z"
   },
   "models": {
     "mode": "merge",
@@ -118,7 +118,8 @@
     "mode": "local",
     "bind": "loopback",
     "auth": {
-      "mode": "none"
+      "mode": "none",
+      "token": "66fedbdafd976c2829148fe42b663fdcb5817f8ad830d38b"
     }
   },
   "memory": {},
