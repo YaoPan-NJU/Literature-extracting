@@ -316,12 +316,26 @@ def fix_quotes(t):
         out.append(c); i += 1
     return ''.join(out)
 
+def repair_json_syntax(t):
+    """Fix common model JSON syntax errors (e.g. mimo missing brace in decision_summary)."""
+    # Fix decision_summary missing opening brace
+    t = re.sub(r'"decision_summary"\s*:\s*"one_sentence_value"\s*:', '"decision_summary":{"one_sentence_value":', t)
+    t = re.sub(r'"decision_summary"\s*:\s*"key_findings"\s*:', '"decision_summary":{"key_findings":', t)
+    t = re.sub(r'"decision_summary"\s*:\s*"biomimetic_insight"\s*:', '"decision_summary":{"biomimetic_insight":', t)
+    t = re.sub(r'"decision_summary"\s*:\s*"main_limitations"\s*:', '"decision_summary":{"main_limitations":', t)
+    return t
+
 def try_parse(t):
     for txt in [t, fix_quotes(t)]:
         s = txt.find('{')
         if s < 0: continue
+        # Try full text parse
         try: return json.loads(txt[s:])
         except json.JSONDecodeError: pass
+        # Try with syntax repair
+        try: return json.loads(repair_json_syntax(txt[s:]))
+        except json.JSONDecodeError: pass
+        # Try matching brace
         depth = 0
         for j in range(s, len(txt)):
             if txt[j] == '{': depth += 1
@@ -329,7 +343,9 @@ def try_parse(t):
                 depth -= 1
                 if depth == 0:
                     try: return json.loads(txt[s:j+1])
-                    except json.JSONDecodeError: break
+                    except json.JSONDecodeError:
+                        try: return json.loads(repair_json_syntax(txt[s:j+1]))
+                        except json.JSONDecodeError: break
     return None
 
 def reconstruct_from_parts(t):
@@ -390,6 +406,8 @@ def reconstruct_from_parts(t):
     return result
 
 obj = try_parse(text)
+if obj is None:
+    obj = reconstruct_from_parts(text)
 if obj is None:
     print("No valid JSON found", file=sys.stderr); sys.exit(1)
 # Validate required fields

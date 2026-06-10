@@ -14,6 +14,23 @@ import glob
 from pathlib import Path
 from collections import defaultdict
 
+# ID 别名归一化：LLM 路由可能产生的非标准 ID → feature-mapping 规范 ID
+ID_ALIASES = {
+    'mof-adsorbent': 'metal-organic-framework',
+    'alginate-adsorbent': 'alginate',
+    'starch-adsorbent': 'starch-granule',
+    'chlorella': 'chlorella-cell-wall',
+    'wood-structure': 'wood-xylem',
+    'superhydrophobic-surface': 'superhydrophobic-artificial',
+    'diatom': 'diatom-frustule',
+    'diatom-inspired-porous': 'diatom-frustule',
+}
+
+
+def normalize_id(raw_id: str) -> str:
+    """将别名 ID 归一化为规范 ID。"""
+    return ID_ALIASES.get(raw_id, raw_id)
+
 
 def map_to_prototypes(json_dir: str) -> dict:
     """
@@ -92,8 +109,11 @@ def map_to_prototypes(json_dir: str) -> dict:
         '单宁': 'plant-tannin',
     }
 
-    # 查找所有 JSON 文件
-    json_files = glob.glob(os.path.join(json_dir, '**/*.json'), recursive=True)
+    # 查找所有 JSON 文件（排除 backup 目录）
+    json_files = [
+        f for f in glob.glob(os.path.join(json_dir, '**/*.json'), recursive=True)
+        if 'backup' not in f.lower() and 'json_backup' not in f
+    ]
 
     for json_file in json_files:
         try:
@@ -179,10 +199,12 @@ def map_to_prototypes(json_dir: str) -> dict:
                             'match_reason': f'从标题/摘要推导: {keyword}'
                         })
 
-            # 添加到映射
+            # 添加到映射（归一化 ID + 去重）
+            seen_prototypes = set()
             for target in prototype_targets:
-                prototype_id = target.get('prototype_id')
-                if prototype_id:
+                prototype_id = normalize_id(target.get('prototype_id', ''))
+                if prototype_id and prototype_id not in seen_prototypes:
+                    seen_prototypes.add(prototype_id)
                     prototype_mapping[prototype_id].append({
                         'json_file': json_file,
                         'confidence': target.get('confidence', 0.5),
