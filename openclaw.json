@@ -6,23 +6,6 @@
   "models": {
     "mode": "merge",
     "providers": {
-      "dashscope": {
-        "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "apiKey": "${DASHSCOPE_API_KEY}",
-        "api": "openai-completions",
-        "models": [
-          {
-            "id": "qwen3.6-plus",
-            "name": "qwen3.6-plus",
-            "reasoning": true,
-            "input": [
-              "text"
-            ],
-            "contextWindow": 1000000,
-            "maxTokens": 16384
-          }
-        ]
-      },
       "bailian": {
         "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
         "apiKey": "${BAILIAN_CODING_PLAN_API_KEY}",
@@ -33,7 +16,8 @@
             "name": "qwen3.6-plus",
             "reasoning": true,
             "input": [
-              "text"
+              "text",
+              "image"
             ],
             "contextWindow": 1000000,
             "maxTokens": 16384
@@ -51,16 +35,46 @@
         ]
       },
       "mimo": {
-        "baseUrl": "https://token-plan-ams.xiaomimimo.com/v1",
+        "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
         "apiKey": "${MIMO_API_KEY}",
         "api": "openai-completions",
         "models": [
+          {
+            "id": "mimo-v2.5",
+            "name": "mimo-v2.5",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "contextWindow": 1000000,
+            "maxTokens": 16384
+          },
           {
             "id": "mimo-v2.5-pro",
             "name": "mimo-v2.5-pro",
             "reasoning": true,
             "input": [
-              "text"
+              "text",
+              "image"
+            ],
+            "contextWindow": 1000000,
+            "maxTokens": 16384
+          }
+        ]
+      },
+      "mimo2": {
+        "baseUrl": "https://token-plan-cn.xiaomimimo.com/v1",
+        "apiKey": "${MIMO_API_KEY_2}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "mimo-v2.5",
+            "name": "mimo-v2.5",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
             ],
             "contextWindow": 1000000,
             "maxTokens": 16384
@@ -71,19 +85,22 @@
   },
   "agents": {
     "defaults": {
-      "model": "mimo/mimo-v2.5-pro",
+      "model": "mimo/mimo-v2.5",
       "models": {
-        "dashscope/qwen3.6-plus": {
-          "alias": "ds-qwen36"
-        },
         "bailian/qwen3.6-plus": {
           "alias": "qwen3.6-plus"
         },
         "bailian/qwen3.5-27b": {
           "alias": "qwen3.5-27b"
         },
+        "mimo/mimo-v2.5": {
+          "alias": "mimo-v2.5"
+        },
         "mimo/mimo-v2.5-pro": {
           "alias": "mimo-v2.5-pro"
+        },
+        "mimo2/mimo-v2.5": {
+          "alias": "mimo2-v2.5"
         }
       },
       "timeoutSeconds": 300

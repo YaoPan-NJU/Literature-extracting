@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 # Multi-worker concurrent PDF extraction for JJJ Literature.
 # Selects 1/2/3 workers explicitly before each run.
 # Uses Python queue_helper.py for cross-platform atomic locking (macOS compatible).
@@ -16,6 +17,7 @@ PYTHON_BIN="${PYTHON_BIN:-$REPO_DIR/.venv/bin/python}"
 NOTIFY_PHONE="+8615895848729"
 LAST_NOTIFY_FILE="/tmp/openclaw/multi_extract_last_notify"
 NOTIFY_COOLDOWN=300
+PROJECT_LABEL="${PROJECT_LABEL:-}"  # 项目标签，如 "JJJ提参时间测试"
 
 RUN_ID="${MULTI_EXTRACT_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
 RUN_DIR="${MULTI_EXTRACT_RUN_DIR:-/tmp/openclaw/litextract_runs/$RUN_ID}"
@@ -45,7 +47,42 @@ hash_path() {
 is_valid_extraction_json() {
   local json_file="$1"
   [[ -s "$json_file" ]] && \
-    "$PYTHON_BIN" -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'schema_version' in d or 'knowledge_items' in d" "$json_file" 2>/dev/null
+    "$PYTHON_BIN" - "$json_file" <<'PY' 2>/dev/null
+import json, re, sys
+from pathlib import Path
+
+p = Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+d = json.loads(text)
+assert "schema_version" in d or "knowledge_items" in d
+assert d.get("knowledge_items"), "empty knowledge_items"
+bad_markers = [
+    "多模态预处理未提取到任何页面内容",
+    "多模态预处理未提取到任何内容",
+    "无法判断文献具体内容和价值",
+    "Total pages: ?",
+    "Total pages 显示为 '?'",
+    "无视觉页缓存",
+    "Multimodal pre-processing extracted zero content",
+    "MULTIMODAL_CONTEXT_BLOCK为空",
+    "Total pages displayed as",
+    "zero pages of content",
+    "强烈建议重新运行视觉预处理",
+    "重新运行视觉预处理",
+    "视觉预处理失败",
+    "OCR失败",
+    "正文不可读",
+]
+assert not any(marker in text for marker in bad_markers)
+bad_patterns = [
+    r"当前仅第\s*\d+\s*页.*被加载",
+    r"正文\s*\d+\s*页完全缺失",
+    r"正文.*完全缺失",
+    r"视觉页.*缺失",
+    r"多模态.*缺失",
+]
+assert not any(re.search(pattern, text) for pattern in bad_patterns)
+PY
 }
 
 unified_json_path() {
@@ -77,10 +114,39 @@ notify_failure() {
   [[ -f "$LAST_NOTIFY_FILE" ]] && last="$(cat "$LAST_NOTIFY_FILE" | tr -d ' ')"
   local diff=$(( now - last ))
   if [[ "$diff" -ge "$NOTIFY_COOLDOWN" ]]; then
-    notify_imsg "⚠️ 提参故障 [Worker $worker_id $model]
+    local pfx=""
+    [[ -n "$PROJECT_LABEL" ]] && pfx="[$PROJECT_LABEL] "
+    notify_imsg "${pfx}⚠️ 提参故障 [Worker $worker_id $model]
 文件: $pdf_name
 原因: $reason"
     echo "$now" > "$LAST_NOTIFY_FILE"
+  fi
+}
+
+free_gb() {
+  df -Pk "$1" | awk 'NR==2 {print int($4/1024/1024)}'
+}
+
+disk_guard() {
+  local free_repo free_tmp
+  free_repo="$(free_gb "$REPO_DIR")"
+  free_tmp="$(free_gb /tmp)"
+  if [[ "$free_repo" -lt "$MIN_FREE_GB" || "$free_tmp" -lt "$MIN_FREE_GB" ]]; then
+    echo "ERROR: free disk below threshold (${MIN_FREE_GB}GB). repo=${free_repo}GB /tmp=${free_tmp}GB" >&2
+    notify_imsg "⏸️ 提参已暂停：磁盘剩余空间低于 ${MIN_FREE_GB}GB
+repo=${free_repo}GB /tmp=${free_tmp}GB
+Run: $RUN_ID"
+    "$PYTHON_BIN" -c "
+import json, pathlib, time
+p = pathlib.Path('/tmp/openclaw/extraction_progress.json')
+try:
+    data = json.loads(p.read_text())
+except Exception:
+    data = {}
+data.update({'status':'paused_low_disk','reason':'free disk below threshold','min_free_gb':$MIN_FREE_GB,'free_repo_gb':$free_repo,'free_tmp_gb':$free_tmp,'updated_at':time.strftime('%Y-%m-%d %H:%M:%S')})
+p.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+"
+    exit 75
   fi
 }
 
@@ -100,31 +166,38 @@ PY
 }
 
 # ── args ────────────────────────────────────────────────────────────
-PDF_DIR=""; OUT_DIR="$DEFAULT_OUT_DIR"; LIMIT=0
+PDF_DIR=""; PDF_LIST_FILE=""; OUT_DIR="$DEFAULT_OUT_DIR"; LIMIT=0
 TIMEOUT_SECONDS=1800; SLEEP_SECONDS=2; FORCE=0; DRY_RUN=0
-WORKERS=1; PER_WORKER_LIMIT=0; MODE="multimodal"
+WORKERS=1; PER_WORKER_LIMIT=0; MODE="multimodal"; ONLY_BAILIAN=0
 PREPROCESS_WORKERS=4
+PREPROCESS_RETRY_ATTEMPTS="${PREPROCESS_RETRY_ATTEMPTS:-6}"
+PREPROCESS_RETRY_DELAY="${PREPROCESS_RETRY_DELAY:-30}"
+PREPROCESS_MAX_VISUAL_PAGES="${PREPROCESS_MAX_VISUAL_PAGES:-0}"
+MIN_FREE_GB="${MIN_FREE_GB:-10}"
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/multi_worker_extract.sh --pdf-dir <DIR> [options]
+Usage: scripts/multi_worker_extract.sh (--pdf-dir <DIR> | --pdf-list <FILE>) [options]
   --out-dir DIR    --limit N    --timeout-seconds N    --sleep-seconds N
   --per-worker-limit N
   --mode multimodal|text-only
   --preprocess-workers N
+  --pdf-list FILE  Read exact PDF paths from FILE instead of scanning --pdf-dir.
   --workers 1|2|3
+  --only-bailian    Run a single worker with worker id 2 and bailian/qwen3.6-plus.
   --include-bailian    Legacy alias for --workers 3.
   --force    --dry-run    -h/--help
 Worker mapping:
-  1 = mimo/mimo-v2.5-pro
-  2 = bailian/qwen3.6-plus + mimo/mimo-v2.5-pro
-  3 = dashscope/qwen3.6-plus + bailian/qwen3.6-plus + mimo/mimo-v2.5-pro
+  1 = mimo/mimo-v2.5
+  2 = bailian/qwen3.6-plus + mimo/mimo-v2.5
+  3 = dashscope/qwen3.6-plus + bailian/qwen3.6-plus + mimo/mimo-v2.5
 USAGE
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pdf-dir)         PDF_DIR="${2:-}"; shift 2 ;;
+    --pdf-list)        PDF_LIST_FILE="${2:-}"; shift 2 ;;
     --out-dir)         OUT_DIR="${2:-}"; shift 2 ;;
     --limit)           LIMIT="${2:-0}"; shift 2 ;;
     --per-worker-limit) PER_WORKER_LIMIT="${2:-0}"; shift 2 ;;
@@ -133,6 +206,7 @@ while [[ $# -gt 0 ]]; do
     --mode)            MODE="${2:-multimodal}"; shift 2 ;;
     --preprocess-workers) PREPROCESS_WORKERS="${2:-4}"; shift 2 ;;
     --workers)         WORKERS="${2:-1}"; shift 2 ;;
+    --only-bailian)    ONLY_BAILIAN=1; WORKERS=1; shift ;;
     --include-bailian) WORKERS=3; shift ;;
     --force)           FORCE=1; shift ;;
     --dry-run)         DRY_RUN=1; shift ;;
@@ -141,33 +215,65 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -z "$PDF_DIR" ]] && { echo "ERROR: --pdf-dir required" >&2; exit 2; }
+if [[ -z "$PDF_DIR" && -z "$PDF_LIST_FILE" ]]; then
+  echo "ERROR: --pdf-dir or --pdf-list required" >&2
+  exit 2
+fi
+if [[ -n "$PDF_LIST_FILE" && ! -f "$PDF_LIST_FILE" ]]; then
+  echo "ERROR: --pdf-list not found: $PDF_LIST_FILE" >&2
+  exit 2
+fi
+if [[ -n "$PDF_DIR" && ! -d "$PDF_DIR" ]]; then
+  echo "ERROR: --pdf-dir not found: $PDF_DIR" >&2
+  exit 2
+fi
 [[ -f "$REPO_DIR/.env" ]] && load_dotenv "$REPO_DIR/.env"
 export OPENCLAW_CONFIG_PATH="$REPO_DIR/openclaw.json"
 
-case "$WORKERS" in
-  1)
-    MODELS=("mimo/mimo-v2.5-pro")
-    MODEL_LABELS=("mimo-v25pro")
-    ;;
-  2)
-    MODELS=("bailian/qwen3.6-plus" "mimo/mimo-v2.5-pro")
-    MODEL_LABELS=("bailian-qwen36" "mimo-v25pro")
-    ;;
-  3)
-    MODELS=("dashscope/qwen3.6-plus" "bailian/qwen3.6-plus" "mimo/mimo-v2.5-pro")
-    MODEL_LABELS=("dashscope-qwen36" "bailian-qwen36" "mimo-v25pro")
-    ;;
-  *)
-    echo "ERROR: --workers must be 1, 2, or 3" >&2
-    exit 2
-    ;;
-esac
+if [[ "$ONLY_BAILIAN" -eq 1 ]]; then
+  MODELS=("bailian/qwen3.6-plus")
+  MODEL_LABELS=("bailian-qwen36")
+  WORKER_IDS=("2")
+else
+  case "$WORKERS" in
+    1)
+      MODELS=("mimo/mimo-v2.5")
+      MODEL_LABELS=("mimo-v25")
+      WORKER_IDS=("1")
+      ;;
+    2)
+      MODELS=("mimo/mimo-v2.5" "mimo2/mimo-v2.5")
+      MODEL_LABELS=("mimo-v25" "mimo2-v25")
+      WORKER_IDS=("1" "2")
+      ;;
+    3)
+      MODELS=("dashscope/qwen3.6-plus" "bailian/qwen3.6-plus" "mimo/mimo-v2.5")
+      MODEL_LABELS=("dashscope-qwen36" "bailian-qwen36" "mimo-v25")
+      WORKER_IDS=("1" "2" "3")
+      ;;
+    *)
+      echo "ERROR: --workers must be 1, 2, or 3" >&2
+      exit 2
+      ;;
+  esac
+fi
 case "$PER_WORKER_LIMIT" in
   ''|*[!0-9]*) echo "ERROR: --per-worker-limit must be a non-negative integer" >&2; exit 2 ;;
 esac
 case "$PREPROCESS_WORKERS" in
   ''|*[!0-9]*) echo "ERROR: --preprocess-workers must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$PREPROCESS_RETRY_ATTEMPTS" in
+  ''|*[!0-9]*) echo "ERROR: PREPROCESS_RETRY_ATTEMPTS must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$PREPROCESS_RETRY_DELAY" in
+  ''|*[!0-9]*) echo "ERROR: PREPROCESS_RETRY_DELAY must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$PREPROCESS_MAX_VISUAL_PAGES" in
+  ''|*[!0-9]*) echo "ERROR: PREPROCESS_MAX_VISUAL_PAGES must be a non-negative integer" >&2; exit 2 ;;
+esac
+case "$MIN_FREE_GB" in
+  ''|*[!0-9]*) echo "ERROR: MIN_FREE_GB must be a non-negative integer" >&2; exit 2 ;;
 esac
 case "$MODE" in
   multimodal|text-only) ;;
@@ -191,6 +297,7 @@ PROMPT_DIR="$RUN_DIR/prompts"
 TEXT_DIR="$RUN_DIR/text"
 SUCCESS_TSV="$RUN_DIR/manifests/success.tsv"
 FAILURES_TSV="$RUN_DIR/manifests/failures.tsv"
+TIMING_TSV="$RUN_DIR/manifests/timing.tsv"
 PDF_LIST="$RUN_DIR/manifests/pdf_list.txt"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -201,6 +308,7 @@ else
     mkdir -p "$OUT_DIR/$cat/json"
   done
   mkdir -p "$RUN_JSON_DIR" "$RAW_DIR" "$LOG_DIR" "$PROMPT_DIR" "$TEXT_DIR" "$RUN_DIR/manifests" "$PID_DIR"
+  rm -f "$PID_DIR"/worker_*.pid "$PID_DIR"/launcher.pid "$PID_DIR"/monitor.pid "$PID_DIR"/notifier.pid
 
   # ── init manifests ────────────────────────────────────────────────
   if [[ ! -f "$SUCCESS_TSV" ]]; then
@@ -211,11 +319,44 @@ else
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       timestamp pdf_path record_id model stage exit_code reason log_path > "$FAILURES_TSV"
   fi
+  if [[ ! -f "$TIMING_TSV" ]]; then
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      timestamp pdf_path record_id model stage0_s stage1_s compose_s llm_s total_s data_pages total_pages > "$TIMING_TSV"
+  fi
 fi
 
 # ── build queue ─────────────────────────────────────────────────────
 : > "$QUEUE_FILE"
-"$PYTHON_BIN" - "$PDF_DIR" > "$PDF_LIST" <<'PY'
+if [[ -n "$PDF_LIST_FILE" ]]; then
+  if ! "$PYTHON_BIN" - "$PDF_LIST_FILE" > "$PDF_LIST" <<'PY'
+import sys
+from pathlib import Path
+
+list_file = Path(sys.argv[1])
+seen = set()
+for line_no, line in enumerate(list_file.read_text(encoding="utf-8").splitlines(), 1):
+    item = line.strip()
+    if not item or item.startswith("#"):
+        continue
+    path = Path(item).expanduser()
+    if not path.is_absolute():
+        path = (list_file.parent / path).resolve()
+    if path.suffix.lower() != ".pdf":
+        raise SystemExit(f"line {line_no}: not a PDF path: {item}")
+    if not path.is_file():
+        raise SystemExit(f"line {line_no}: PDF not found: {path}")
+    normalized = str(path)
+    if normalized in seen:
+        continue
+    seen.add(normalized)
+    print(normalized)
+PY
+  then
+    echo "ERROR: failed to read --pdf-list: $PDF_LIST_FILE" >&2
+    exit 2
+  fi
+else
+  if ! "$PYTHON_BIN" - "$PDF_DIR" > "$PDF_LIST" <<'PY'
 import os, sys
 root = sys.argv[1]
 paths = []
@@ -226,6 +367,11 @@ for dp, _, fns in os.walk(root):
 for p in sorted(paths):
     print(p)
 PY
+  then
+    echo "ERROR: failed to scan --pdf-dir: $PDF_DIR" >&2
+    exit 2
+  fi
+fi
 
 queued_count=0
 skipped_existing=0
@@ -252,9 +398,16 @@ done < "$PDF_LIST"
 
 TOTAL_QUEUED="$(wc -l < "$QUEUE_FILE" | tr -d ' ')"
 TOTAL_ALL="$(wc -l < "$PDF_LIST" | tr -d ' ')"
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  printf '%s\n' "$TOTAL_QUEUED" > "$RUN_DIR/manifests/queue_total.txt"
+fi
 
 echo "=== Multi-Worker Extraction ==="
-echo "PDF dir:      $PDF_DIR"
+if [[ -n "$PDF_LIST_FILE" ]]; then
+  echo "PDF list:     $PDF_LIST_FILE"
+else
+  echo "PDF dir:      $PDF_DIR"
+fi
 echo "Output:       $OUT_DIR"
 echo "Run dir:      $RUN_DIR"
 echo "Run ID:       $RUN_ID"
@@ -264,14 +417,19 @@ echo "Queued:       $TOTAL_QUEUED (skipped $skipped_existing existing)"
 echo "Workers:      ${#MODELS[@]} (${MODEL_LABELS[*]})"
 echo "Mode:         $MODE"
 [[ "$MODE" == "multimodal" ]] && echo "Preprocess:   $PREPROCESS_WORKERS visual workers"
+[[ "$MODE" == "multimodal" ]] && echo "Preprocess retry: ${PREPROCESS_RETRY_ATTEMPTS} attempts, ${PREPROCESS_RETRY_DELAY}s base delay"
+[[ "$MODE" == "multimodal" && "$PREPROCESS_MAX_VISUAL_PAGES" -gt 0 ]] && echo "Preprocess cap: max $PREPROCESS_MAX_VISUAL_PAGES visual pages per PDF"
 [[ "$PER_WORKER_LIMIT" -gt 0 ]] && echo "Per worker:   $PER_WORKER_LIMIT PDFs"
 echo "Timeout:      ${TIMEOUT_SECONDS}s per PDF"
+echo "Min free disk:${MIN_FREE_GB}GB"
 echo ""
 
 if [[ "$DRY_RUN" -eq 1 || "$TOTAL_QUEUED" -eq 0 ]]; then
   [[ "$TOTAL_QUEUED" -eq 0 ]] && echo "Nothing to do."
   exit 0
 fi
+
+disk_guard
 
 # ── JSON extraction ─────────────────────────────────────────────────
 extract_first_json() {
@@ -385,14 +543,46 @@ if obj is None:
         print(f"reconstructed from parts: {len(obj.get('knowledge_items',[]))} ki", file=sys.stderr)
 if obj is None:
     print("No valid JSON found", file=sys.stderr); sys.exit(1)
+if not obj.get("knowledge_items"):
+    print("No knowledge_items found", file=sys.stderr); sys.exit(1)
+serialized = json.dumps(obj, ensure_ascii=False)
+bad_markers = [
+    "强烈建议重新运行视觉预处理",
+    "重新运行视觉预处理",
+    "视觉预处理失败",
+    "OCR失败",
+    "正文不可读",
+]
+bad_patterns = [
+    r"当前仅第\s*\d+\s*页.*被加载",
+    r"正文\s*\d+\s*页完全缺失",
+    r"正文.*完全缺失",
+    r"视觉页.*缺失",
+    r"多模态.*缺失",
+]
+if any(marker in serialized for marker in bad_markers) or any(
+    re.search(pattern, serialized) for pattern in bad_patterns
+):
+    print("Quality gate failed: visual preprocessing/body coverage warning", file=sys.stderr)
+    sys.exit(1)
 with open(json_path, "w", encoding="utf-8") as f:
     json.dump(obj, f, ensure_ascii=False, indent=2); f.write("\n")
 print(f"ok chars={len(json.dumps(obj))}")
 PYEOF
 }
 
+quarantine_invalid_json() {
+  local json_file="$1" record_id="$2"
+  [[ -s "$json_file" ]] || return 0
+  local reject_dir="$RUN_DIR/rejected_json"
+  mkdir -p "$reject_dir"
+  mv "$json_file" "$reject_dir/${record_id}.json" 2>/dev/null || true
+}
+
 extract_pdf_text() {
   "$PYTHON_BIN" - "$1" "$2" <<'PYEOF'
+import os
+os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
 from pathlib import Path
 import sys
 
@@ -441,9 +631,16 @@ try:
     stage0 = cache["stage0"]
     visual = cache.get("visual_markdown", {})
     data_pages = [str(p) for p in stage0.get("data_page_nums", [])]
-    missing = [p for p in data_pages if p not in visual]
+    missing = [p for p in data_pages if not str(visual.get(p, "")).strip()]
     if missing:
         raise ValueError(f"missing visual pages: {missing[:5]}")
+    text_chars = sum(len(str(p.get("text", "")).strip()) for p in stage0.get("pages_text", []))
+    visual_chars = sum(len(str(v).strip()) for v in visual.values())
+    total_pages = int(stage0.get("total_pages") or len(stage0.get("pages_text", [])) or 0)
+    if total_pages >= 20 and text_chars / max(1, total_pages) < 30 and not data_pages:
+        raise ValueError("sparse long document has no visual pages")
+    if text_chars + visual_chars < 100:
+        raise ValueError("visual cache has no usable text or visual content")
 except Exception as exc:
     print(exc, file=sys.stderr)
     sys.exit(1)
@@ -540,7 +737,13 @@ worker() {
     processed=$((processed+1))
     echo "[worker $worker_id] [$processed] $basename_pdf  ($label)" | tee -a "$worker_log"
 
+    # ---- Fix: pre-clean stale worker session state for this worker label ----
+    worker_session_glob="/Users/panyao/.openclaw/agents/lit-extract/sessions/multi-${RUN_ID}-w${worker_id}-${label}.*"
+    # shellcheck disable=SC2086
+    rm -f $worker_session_glob 2>> "$log_path" || true
+
     if [[ "$MODE" == "text-only" ]]; then
+      local stage0_s=0 stage1_s=0 compose_s=0 data_pages=0 total_pages=0
       if ! extract_pdf_text "$pdf" "$text_path" >> "$log_path" 2>&1; then
         "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
           "$(timestamp)" "$pdf" "$record_id" "$model" "pdf_text_extract" "1" "local_text_extract_failed" "$log_path"
@@ -568,10 +771,17 @@ worker() {
     else
       local cache_path
       cache_path="$(visual_cache_path "$pdf")"
+      local stage0_s=0 stage1_s=0 compose_s=0 data_pages=0 total_pages=0
       if [[ "$FORCE" -eq 1 || ! -s "$cache_path" ]] || ! is_valid_visual_cache "$cache_path" >> "$log_path" 2>&1; then
         echo "[worker $worker_id]   preprocess visual cache" | tee -a "$worker_log"
+        local pp_provider="dashscope"
+        case "$model" in
+          mimo/*|mimo2/*) pp_provider="mimo" ;;
+        esac
         if ! "$PYTHON_BIN" "$REPO_DIR/scripts/preprocess.py" "$pdf" \
+            --provider "$pp_provider" \
             --max-workers "$PREPROCESS_WORKERS" \
+            --max-visual-pages "$PREPROCESS_MAX_VISUAL_PAGES" \
             -o "$cache_path" >> "$log_path" 2>&1; then
           "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
             "$(timestamp)" "$pdf" "$record_id" "$model" "preprocess" "1" "visual_preprocess_failed" "$log_path"
@@ -579,13 +789,40 @@ worker() {
           notify_failure "$worker_id" "$label" "$basename_pdf" "视觉预处理失败"
           continue
         fi
+        # Read timing JSON written by preprocess.py
+        local timing_json="${cache_path}.timing.json"
+        if [[ -f "$timing_json" ]]; then
+          local timing_vals
+          timing_vals="$("$PYTHON_BIN" -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(int(d.get('stage0_seconds',0)), int(d.get('stage1_seconds',0)), int(d.get('data_pages',0)), int(d.get('total_pages',0)))
+" "$timing_json")"
+          stage0_s="$(echo "$timing_vals" | cut -d' ' -f1)"
+          stage1_s="$(echo "$timing_vals" | cut -d' ' -f2)"
+          data_pages="$(echo "$timing_vals" | cut -d' ' -f3)"
+          total_pages="$(echo "$timing_vals" | cut -d' ' -f4)"
+        fi
       fi
 
+      local comp_start_ts; comp_start_ts="$(date +%s)"
       if ! compose_multimodal_context "$pdf" "$cache_path" "$text_path" >> "$log_path" 2>&1; then
         "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
           "$(timestamp)" "$pdf" "$record_id" "$model" "compose_context" "1" "multimodal_context_failed" "$log_path"
         echo "[worker $worker_id]   FAIL compose_context" | tee -a "$worker_log"
         notify_failure "$worker_id" "$label" "$basename_pdf" "多模态上下文合并失败"
+        continue
+      fi
+      local comp_end_ts; comp_end_ts="$(date +%s)"
+      compose_s=$((comp_end_ts - comp_start_ts))
+
+      # ---- Fix: prompt size precheck to avoid context overflow ----
+      text_chars="$(wc -c < "$text_path" | tr -d ' ')"
+      max_context_chars="${MAX_CONTEXT_CHARS:-700000}"
+      if [[ "$text_chars" -gt "$max_context_chars" ]]; then
+        echo "[worker $worker_id]   SKIP prompt_too_large chars=$text_chars limit=$max_context_chars" | tee -a "$worker_log"
+        "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
+          "$(timestamp)" "$pdf" "$record_id" "$model" "precheck" "1" "prompt_too_large" "$log_path"
         continue
       fi
 
@@ -609,8 +846,9 @@ worker() {
       } > "$prompt_path"
     fi
 
-    local start_ts end_ts elapsed_s
+    local start_ts end_ts elapsed_s llm_s total_s
     start_ts="$(date +%s)"
+    llm_s=0
 
     if (cd "$REPO_DIR" && run_with_timeout "$TIMEOUT_SECONDS" \
         openclaw agent --local --agent lit-extract \
@@ -620,13 +858,19 @@ worker() {
           --message "$(cat "$prompt_path")" \
           > "$raw_path" 2>> "$log_path"); then
       if extract_first_json "$raw_path" "$json_path" >> "$log_path" 2>&1 && \
-         "$PYTHON_BIN" -c "import json,sys; json.load(open(sys.argv[1]))" "$json_path" 2>/dev/null; then
+         is_valid_extraction_json "$json_path"; then
         end_ts="$(date +%s)"; elapsed_s=$((end_ts-start_ts))
+        llm_s=$elapsed_s
         "$PYTHON_BIN" "$QH" append "$SUCCESS_TSV" \
           "$(timestamp)" "$pdf" "$record_id" "$model" "$json_path" "$raw_path" "$elapsed_s"
-        echo "[worker $worker_id]   OK ${elapsed_s}s" | tee -a "$worker_log"
+        # Write timing breakdown
+        total_s=$((stage0_s + stage1_s + compose_s + llm_s))
+        "$PYTHON_BIN" "$QH" append "$TIMING_TSV" \
+          "$(timestamp)" "$pdf" "$record_id" "$model" "$stage0_s" "$stage1_s" "$compose_s" "$llm_s" "$total_s" "$data_pages" "$total_pages"
+        echo "[worker $worker_id]   OK ${elapsed_s}s  [stage0=${stage0_s}s stage1=${stage1_s}s compose=${compose_s}s llm=${llm_s}s total=${total_s}s]" | tee -a "$worker_log"
       else
         end_ts="$(date +%s)"; elapsed_s=$((end_ts-start_ts))
+        quarantine_invalid_json "$json_path" "$record_id"
         "$PYTHON_BIN" "$QH" append "$FAILURES_TSV" \
           "$(timestamp)" "$pdf" "$record_id" "$model" "json_extract" "1" "no_valid_json" "$log_path"
         echo "[worker $worker_id]   FAIL json ${elapsed_s}s" | tee -a "$worker_log"
@@ -647,20 +891,54 @@ worker() {
 }
 
 # ── launch ──────────────────────────────────────────────────────────
+# On modern macOS, bash fork() + CoreFoundation = segfault.
+# Workaround: launch each worker as a separate bash process via single_worker_extract.sh
 echo "Launching ${#MODELS[@]} workers..."
 for i in "${!MODELS[@]}"; do
-  worker "$((i+1))" "${MODELS[$i]}" "${MODEL_LABELS[$i]}" &
-  echo $! > "$PID_DIR/worker_$((i+1)).pid"
-  echo "  Worker $((i+1)): PID $!  ${MODELS[$i]}"
+  worker_id="${WORKER_IDS[$i]}"
+  TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
+  SLEEP_SECONDS="$SLEEP_SECONDS" \
+  PREPROCESS_WORKERS="$PREPROCESS_WORKERS" \
+  PREPROCESS_RETRY_ATTEMPTS="$PREPROCESS_RETRY_ATTEMPTS" \
+  PREPROCESS_RETRY_DELAY="$PREPROCESS_RETRY_DELAY" \
+  PREPROCESS_MAX_VISUAL_PAGES="$PREPROCESS_MAX_VISUAL_PAGES" \
+  FORCE="$FORCE" \
+  MIN_FREE_GB="$MIN_FREE_GB" \
+  nohup bash "$REPO_DIR/scripts/single_worker_extract.sh" \
+    "$worker_id" "${MODELS[$i]}" "${MODEL_LABELS[$i]}" \
+    "$RUN_ID" "$QUEUE_FILE" "$RUN_DIR" "$PDF_DIR" "$OUT_DIR" \
+    > "$LOG_DIR/worker_${worker_id}_${MODEL_LABELS[$i]}_launch.log" 2>&1 &
+  echo $! > "$PID_DIR/worker_${worker_id}.pid"
+  echo "  Worker $worker_id: PID $!  ${MODELS[$i]}"
 done
 echo $$ > "$PID_DIR/launcher.pid"
 echo ""; echo "Running. Queue: $QUEUE_FILE"; echo ""
 
+if [[ "${START_MONITORS:-0}" == "1" ]]; then
+  nohup bash "$REPO_DIR/scripts/progress_monitor_multi.sh" \
+    "$RUN_DIR" \
+    "$TOTAL_QUEUED" \
+    "$QUEUE_FILE" \
+    > /tmp/openclaw/multi_monitor.log 2>&1 &
+  echo $! > "$PID_DIR/monitor.pid"
+  echo "  Monitor PID: $!"
+
+  nohup bash "$REPO_DIR/scripts/notify_progress.sh" \
+    "$RUN_DIR" \
+    "$TOTAL_QUEUED" \
+    "$QUEUE_FILE" \
+    > /tmp/openclaw/notify_progress.log 2>&1 &
+  echo $! > "$PID_DIR/notifier.pid"
+  echo "  Notifier PID: $!"
+fi
+
 # ── wait & summary ──────────────────────────────────────────────────
 wait
 
-success_count=$(( $(wc -l < "$SUCCESS_TSV" | tr -d ' ') - 1 ))
-failure_count=$(( $(wc -l < "$FAILURES_TSV" | tr -d ' ') - 1 ))
+success_lines="$(wc -l < "$SUCCESS_TSV" | tr -d ' ')"
+failure_lines="$(wc -l < "$FAILURES_TSV" | tr -d ' ')"
+success_count=$((success_lines - 1))
+failure_count=$((failure_lines - 1))
 [[ "$success_count" -lt 0 ]] && success_count=0
 [[ "$failure_count" -lt 0 ]] && failure_count=0
 
@@ -670,6 +948,7 @@ echo "Success: $success_count  Failed: $failure_count"
 if "$PYTHON_BIN" "$REPO_DIR/scripts/merge_results.py" >> "$RUN_DIR/merge.log" 2>&1 && \
    "$PYTHON_BIN" "$REPO_DIR/scripts/update_extraction_progress_doc.py" >> "$RUN_DIR/merge.log" 2>&1; then
   echo "Unified manifests updated: $OUT_DIR/manifests"
+  bash "$REPO_DIR/scripts/cleanup_extraction_artifacts.sh" --run-dir "$RUN_DIR" >> "$RUN_DIR/merge.log" 2>&1 || true
 else
   echo "WARN: failed to refresh unified manifests; check $RUN_DIR/merge.log" >&2
 fi
@@ -679,8 +958,53 @@ notify_imsg "✅ 提参批次完成
 失败: $failure_count
 结果: $OUT_DIR"
 
-"$PYTHON_BIN" -c "
+BATCH_PROCESSED=$((success_count + failure_count)) \
+BATCH_SUCCESS="$success_count" \
+BATCH_FAILED="$failure_count" \
+BATCH_TOTAL="$TOTAL_QUEUED" \
+RUN_ID_ENV="$RUN_ID" \
+RUN_DIR_ENV="$RUN_DIR" \
+OUT_DIR_ENV="$OUT_DIR" \
+"$PYTHON_BIN" <<'PY'
 import json
-p = {'status':'completed','processed':$((success_count+failure_count)),'success':$success_count,'failed':$failure_count,'remaining':0,'updated_at':'$(date '+%Y-%m-%d %H:%M:%S')'}
-with open('/tmp/openclaw/extraction_progress.json','w') as f: json.dump(p,f,indent=2)
-"
+import os
+import time
+from pathlib import Path
+
+def int_env(name: str) -> int:
+    return int(os.environ.get(name) or 0)
+
+out_dir = Path(os.environ["OUT_DIR_ENV"])
+progress = {
+    "status": "completed",
+    "scope": "batch",
+    "run_id": os.environ.get("RUN_ID_ENV") or "",
+    "run_dir": os.environ.get("RUN_DIR_ENV") or "",
+    "total": int_env("BATCH_TOTAL"),
+    "queued": 0,
+    "processed": int_env("BATCH_PROCESSED"),
+    "success": int_env("BATCH_SUCCESS"),
+    "failed": int_env("BATCH_FAILED"),
+    "remaining": 0,
+    "active_workers": 0,
+    "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+}
+
+library_progress_path = out_dir / "manifests" / "progress.json"
+if library_progress_path.is_file():
+    try:
+        library = json.loads(library_progress_path.read_text(encoding="utf-8"))
+        progress["library_progress"] = {
+            "total_pdfs_in_library": library.get("total_pdfs_in_library"),
+            "total_extracted": library.get("total_extracted"),
+            "total_remaining": library.get("total_remaining"),
+            "generated_at": library.get("generated_at"),
+        }
+    except Exception:
+        pass
+
+Path("/tmp/openclaw/extraction_progress.json").write_text(
+    json.dumps(progress, ensure_ascii=False, indent=2),
+    encoding="utf-8",
+)
+PY

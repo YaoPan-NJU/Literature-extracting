@@ -1,8 +1,8 @@
 # HEARTBEAT.md
 
-## 提参进度检查（每小时自动执行）
+## 提参进度检查（整点自动执行）
 
-每次 heartbeat 触发时，执行以下操作：
+每个整点（如 10:00、11:00、12:00）heartbeat 触发时，执行以下操作：
 
 1. 读取 `/tmp/openclaw/extraction_progress.json` 获取当前进度
 2. 查看最新的 run 目录（`ls -lt /tmp/openclaw/litextract_runs/ | head -2`），读取其中的 `manifests/failures.tsv` 和 `manifests/success.tsv`

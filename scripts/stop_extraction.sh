@@ -3,6 +3,8 @@
 
 echo "Stopping extraction processes..."
 
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # kill single-worker batch
 for f in /tmp/openclaw/batch_extract.pid; do
   if [[ -f "$f" ]]; then
@@ -27,8 +29,18 @@ if [[ -d "$PID_DIR" ]]; then
   rm -rf "$PID_DIR"
 fi
 
+# kill wrappers that may have outlived or lost the pid directory
+pkill -f "$REPO_DIR/scripts/single_worker_extract.sh" 2>/dev/null && echo "  Killed remaining single-worker wrappers"
+pkill -f "$REPO_DIR/scripts/multi_worker_extract.sh" 2>/dev/null && echo "  Killed remaining multi-worker wrappers"
+pkill -f "$REPO_DIR/scripts/progress_monitor_multi.sh" 2>/dev/null && echo "  Killed remaining progress monitors"
+pkill -f "$REPO_DIR/scripts/notify_progress.sh" 2>/dev/null && echo "  Killed remaining progress notifiers"
+
 # kill any remaining openclaw agent processes
-pkill -f "openclaw agent.*lit-extract" 2>/dev/null && echo "  Killed remaining openclaw agents"
+# Use a longer grace period to allow agents to finish current extraction
+# before force-killing them.
+pkill -f "openclaw agent.*lit-extract" 2>/dev/null && echo "  Sent SIGTERM to openclaw agents" && sleep 10
+# force kill any that didn't exit gracefully
+pkill -9 -f "openclaw agent.*lit-extract" 2>/dev/null && echo "  Force-killed remaining openclaw agents"
 
 # clean up temp files
 rm -f /tmp/openclaw/batch_extract.pid

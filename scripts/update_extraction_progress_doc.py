@@ -68,10 +68,15 @@ def category_rows(progress: dict, success_rows: list[dict[str, str]], remaining_
     rows = [["分类", "总数", "已提参", "剩余", "进度"]]
     for name in names:
         item = categories.get(name, {})
-        total = int(item.get("total") or (success_counter[name] + remaining_counter[name]))
-        extracted = int(item.get("extracted") or success_counter[name])
-        remaining = int(item.get("remaining") or remaining_counter[name])
-        pct = f"{(extracted / total * 100):.1f}%" if total else "n/a"
+        if name in categories:
+            total = int(item.get("total", 0))
+            extracted = int(item.get("extracted", 0))
+            remaining = int(item.get("remaining", 0))
+        else:
+            total = success_counter[name] + remaining_counter[name]
+            extracted = success_counter[name]
+            remaining = remaining_counter[name]
+        pct = f"{(extracted / total * 100):.2f}%" if total else "n/a"
         rows.append([name, str(total), str(extracted), str(remaining), pct])
     return rows
 
@@ -99,10 +104,11 @@ def next_queue_rows(rows: list[dict[str, str]], count: int = 50) -> list[list[st
 
 def json_counts() -> list[list[str]]:
     rows = [["输出目录", "JSON 数量"]]
-    for child in sorted(EXTRACTIONS_DIR.iterdir()):
-        if child.name == "manifests" or not child.is_dir():
+    for cat in ["英文文献", "中文文献", "专利", "书本/中文", "书本/英文"]:
+        json_dir = EXTRACTIONS_DIR / cat / "json"
+        if not json_dir.is_dir():
             continue
-        rows.append([rel(child), str(sum(1 for _ in child.rglob("*.json")))])
+        rows.append([rel(json_dir), str(sum(1 for _ in json_dir.glob("*.json")))])
     return rows
 
 
@@ -114,7 +120,7 @@ def main() -> None:
     total = progress.get("total_pdfs_in_library") or len(success_rows) + len(remaining_rows)
     extracted = progress.get("total_extracted") or len(success_rows)
     remaining = progress.get("total_remaining") or len(remaining_rows)
-    pct = f"{(int(extracted) / int(total) * 100):.1f}%" if total else "n/a"
+    pct = f"{(int(extracted) / int(total) * 100):.2f}%" if total else "n/a"
 
     generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
     progress_generated = progress.get("generated_at", "unknown")
@@ -174,7 +180,7 @@ def main() -> None:
 
 - `success.tsv` 和 `remaining_queue.tsv` 是避免遗漏、重复的主依据。
 - 启动新任务前用 `--workers 1|2|3` 选择并发路数。
-- `--workers 1` 只用 mimo；`--workers 2` 用 bailian + mimo；`--workers 3` 用 dashscope + bailian + mimo。
+- `--workers 1` 只用 `mimo/mimo-v2.5`；`--workers 2` 用 `bailian/qwen3.6-plus` + `mimo/mimo-v2.5`；`--workers 3` 用 dashscope + bailian + mimo。
 - 需要每路固定篇数时，用 `--per-worker-limit N`，例如三路各 99 篇：`bash scripts/launch_multi_extract.sh --workers 3 --per-worker-limit 99`。
 - 英文批量提参默认读取 `workspace/en_pdfs/` hardlink 目录；不要直接用 symlink 目录喂给 OpenClaw。
 - `scripts/multi_worker_extract.sh` 会跳过 `outputs/extractions/` 中已存在的有效 JSON。

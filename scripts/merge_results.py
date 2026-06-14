@@ -14,6 +14,7 @@ Also builds a unified progress tracker and remaining-queue file.
 import json
 import os
 import shutil
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -315,7 +316,7 @@ def main():
 
     print(f"  复制了 {copied} 个 JSON 文件")
 
-    # Step 4: Count per category
+    # Step 4: Count JSON files per output directory
     print("\n[4/5] 统计各分类...")
     cat_counts = {}
     for cat in ["英文文献", "中文文献", "专利", "书本/中文", "书本/英文"]:
@@ -344,6 +345,13 @@ def main():
             for jf in json_dir.glob("*.json"):
                 extracted_names.add(jf.stem + ".pdf")
 
+    indexed_names = set(pdf_index)
+    extracted_indexed_names = extracted_names & indexed_names
+    orphan_json_names = sorted(extracted_names - indexed_names)
+    done_by_category = Counter()
+    for pdf_name in extracted_indexed_names:
+        done_by_category[pdf_index[pdf_name]["category"]] += 1
+
     remaining = []
     for pdf_name, info in sorted(pdf_index.items()):
         if pdf_name not in extracted_names:
@@ -360,17 +368,19 @@ def main():
     progress = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "total_pdfs_in_library": len(pdf_index),
-        "total_extracted": len(extracted_names),
+        "total_extracted": len(extracted_indexed_names),
         "total_remaining": len(remaining),
+        "orphan_json_count": len(orphan_json_names),
         "by_category": {},
     }
     for cat in ["英文文献", "中文文献", "专利", "书本/中文", "书本/英文"]:
         cat_total = sum(1 for v in pdf_index.values() if v["category"] == cat)
-        cat_done = cat_counts.get(cat, 0)
+        cat_done = done_by_category.get(cat, 0)
         progress["by_category"][cat] = {
             "total": cat_total,
             "extracted": cat_done,
             "remaining": cat_total - cat_done,
+            "json_files": cat_counts.get(cat, 0),
         }
 
     progress_path = OUT_ROOT / "manifests" / "progress.json"
@@ -383,10 +393,13 @@ def main():
     print("=" * 60)
     print(f"\n统一输出: {OUT_ROOT}")
     print(f"\n各分类已提参数量:")
-    for cat, count in cat_counts.items():
+    for cat in cat_counts:
         total = progress["by_category"].get(cat, {}).get("total", 0)
-        print(f"  {cat}: {count}/{total}")
-    print(f"\n总计: {len(extracted_names)} 已提参 / {len(pdf_index)} 总文献")
+        done = progress["by_category"].get(cat, {}).get("extracted", 0)
+        print(f"  {cat}: {done}/{total}")
+    if orphan_json_names:
+        print(f"\n注意: 发现 {len(orphan_json_names)} 个不在源文献库索引中的 JSON，未计入进度。")
+    print(f"\n总计: {len(extracted_indexed_names)} 已提参 / {len(pdf_index)} 总文献")
     print(f"剩余: {len(remaining)} 篇待提参")
     print(f"\nManifest: {manifest_path}")
     print(f"剩余队列: {queue_path}")
